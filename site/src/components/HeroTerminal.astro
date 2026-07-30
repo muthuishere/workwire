@@ -1,0 +1,258 @@
+---
+// Animated terminal hero: replays a REAL recorded workwire transcript
+// (2026-07-30, real binary + real interactive Claude Code session, unattended).
+// Plain CSS/JS typewriter — no external deps, no video.
+---
+
+<div class="ww-term" id="ww-term" aria-label="workwire demo terminal (animated replay of a real recorded session)">
+	<div class="ww-term-bar">
+		<span class="ww-dot ww-dot-r"></span>
+		<span class="ww-dot ww-dot-y"></span>
+		<span class="ww-dot ww-dot-g"></span>
+		<span class="ww-term-title">workwire — real recorded session</span>
+	</div>
+	<div class="ww-term-body" id="ww-term-body">
+		<noscript>
+			<div class="ww-line"><span class="ww-prompt">$</span> workwire serve <span class="ww-dim"># the hub — one static binary, port 14411</span></div>
+			<div class="ww-line ww-agent"><span class="ww-cprompt">claude&gt;</span> listen with workwire</div>
+			<div class="ww-line ww-join">⏺ on the wire as repoA — listening</div>
+			<div class="ww-line"><span class="ww-prompt">$</span> workwire peers</div>
+			<div class="ww-line ww-out">agent&nbsp;&nbsp;&nbsp;&nbsp;repoA</div>
+			<div class="ww-line"><span class="ww-prompt">$</span> workwire ask repoA "where does auth live in your codebase?"</div>
+			<div class="ww-line ww-out">repoA: internal/auth/auth.go — EnsureAdminToken mints the 0600 admin token; Authenticator.Identify(r) resolves the actor with 401-vs-403 discipline (ADR-007); the server calls it via Server.identify() in internal/server/server.go:87</div>
+			<div class="ww-line ww-dim"># answered in 7.8 s by repoA's already-running session, from its own hot context</div>
+		</noscript>
+	</div>
+</div>
+
+<style>
+	.ww-term {
+		background: #16171a;
+		border: 1px solid #2e3138;
+		border-radius: 12px;
+		box-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+		max-width: 46rem;
+		margin: 1.5rem auto 0;
+		overflow: hidden;
+		text-align: left;
+	}
+	:root[data-theme='light'] .ww-term {
+		border-color: #d5d7dc;
+		box-shadow: 0 8px 28px rgba(20, 30, 60, 0.16);
+	}
+	.ww-term-bar {
+		display: flex;
+		align-items: center;
+		gap: 0.45rem;
+		padding: 0.55rem 0.85rem;
+		background: #1d1f24;
+		border-bottom: 1px solid #2e3138;
+	}
+	.ww-dot { width: 11px; height: 11px; border-radius: 50%; flex: none; }
+	.ww-dot-r { background: #ff5f57; }
+	.ww-dot-y { background: #febc2e; }
+	.ww-dot-g { background: #28c840; }
+	.ww-term-title {
+		margin-left: 0.5rem;
+		font-family: var(--sl-font-mono, ui-monospace, monospace);
+		font-size: 0.72rem;
+		color: #7b7f88;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.ww-term-body {
+		font-family: var(--sl-font-mono, 'JetBrains Mono', ui-monospace, monospace);
+		font-size: clamp(0.72rem, 2.4vw, 0.85rem);
+		line-height: 1.65;
+		color: #d7dae0;
+		padding: 0.9rem 1rem 1rem;
+		min-height: 15.5rem;
+		overflow-x: hidden;
+	}
+	.ww-term-body :global(.ww-line) {
+		white-space: pre-wrap;
+		overflow-wrap: anywhere;
+		margin: 0;
+	}
+	.ww-term-body :global(.ww-prompt) { color: #3478f6; font-weight: 600; }
+	.ww-term-body :global(.ww-cprompt) { color: #d97757; font-weight: 600; }
+	.ww-term-body :global(.ww-dim) { color: #6d717b; }
+	.ww-term-body :global(.ww-out) { color: #aeb3bc; }
+	.ww-term-body :global(.ww-agent) {
+		border-left: 2px solid #d97757;
+		padding-left: 0.55rem;
+		margin-top: 0.35rem;
+	}
+	.ww-term-body :global(.ww-join) {
+		border-left: 2px solid #28c840;
+		padding-left: 0.55rem;
+		color: #8fd8a0;
+		margin-bottom: 0.35rem;
+	}
+	.ww-term-body :global(.ww-join .ww-orb) { color: #28c840; }
+	.ww-term-body :global(.ww-answer) { color: #cfd6e4; }
+	.ww-term-body :global(.ww-spin) { color: #3478f6; }
+	.ww-term-body :global(.ww-cursor) {
+		display: inline-block;
+		width: 0.55em;
+		height: 1.05em;
+		background: #d7dae0;
+		vertical-align: text-bottom;
+		animation: ww-blink 1s steps(1) infinite;
+	}
+	@keyframes ww-blink { 50% { opacity: 0; } }
+	@media (prefers-reduced-motion: reduce) {
+		.ww-term-body :global(.ww-cursor) { animation: none; }
+	}
+</style>
+
+<script>
+	(() => {
+		const body = document.getElementById('ww-term-body');
+		if (!body) return;
+
+		// Real recorded transcript (2026-07-30). Real timings, one compression:
+		// the 7.8 s answer wait is replayed as ~2.5 s for the loop — the printed
+		// caption keeps the honest number.
+		const ANSWER =
+			'repoA: internal/auth/auth.go — EnsureAdminToken mints the 0600 admin token; Authenticator.Identify(r) resolves the actor with 401-vs-403 discipline (ADR-007); the server calls it via Server.identify() in internal/server/server.go:87';
+
+		const script = [
+			{ t: 'cmd', prompt: '$', promptCls: 'ww-prompt', text: 'workwire serve', comment: '  # the hub — one static binary, port 14411' },
+			{ t: 'pause', ms: 700 },
+			{ t: 'cmd', prompt: 'claude>', promptCls: 'ww-cprompt', text: 'listen with workwire', cls: 'ww-agent' },
+			{ t: 'pause', ms: 600 },
+			{ t: 'out', html: '<span class="ww-orb">⏺</span> on the wire as repoA — listening', cls: 'ww-join' },
+			{ t: 'pause', ms: 800 },
+			{ t: 'cmd', prompt: '$', promptCls: 'ww-prompt', text: 'workwire peers' },
+			{ t: 'pause', ms: 350 },
+			{ t: 'out', html: 'agent&nbsp;&nbsp;&nbsp;&nbsp;repoA', cls: 'ww-out' },
+			{ t: 'pause', ms: 900 },
+			{ t: 'cmd', prompt: '$', promptCls: 'ww-prompt', text: 'workwire ask repoA "where does auth live in your codebase?"' },
+			{ t: 'spin', ms: 2500 },
+			{ t: 'stream', text: ANSWER, cls: 'ww-answer' },
+			{ t: 'pause', ms: 300 },
+			{ t: 'out', html: '# answered in 7.8 s by repoA’s already-running session, from its own hot context', cls: 'ww-dim' },
+		];
+
+		const esc = (s) =>
+			s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+		const finalHTML = () =>
+			script
+				.filter((s) => s.t === 'cmd' || s.t === 'out' || s.t === 'stream')
+				.map((s) => {
+					const cls = 'ww-line' + (s.cls ? ' ' + s.cls : '');
+					if (s.t === 'cmd')
+						return `<div class="${cls}"><span class="${s.promptCls}">${esc(s.prompt)}</span> ${esc(s.text)}${s.comment ? `<span class="ww-dim">${esc(s.comment)}</span>` : ''}</div>`;
+					if (s.t === 'stream') return `<div class="${cls}">${esc(s.text)}</div>`;
+					return `<div class="${cls}">${s.html}</div>`;
+				})
+				.join('');
+
+		const reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
+		if (reduced.matches) {
+			body.innerHTML = finalHTML();
+			return;
+		}
+
+		let paused = false;
+		const term = document.getElementById('ww-term');
+		term.addEventListener('mouseenter', () => (paused = true));
+		term.addEventListener('mouseleave', () => (paused = false));
+
+		const sleep = (ms) =>
+			new Promise((resolve) => {
+				let remaining = ms;
+				let last = performance.now();
+				const tick = (now) => {
+					if (!paused) remaining -= now - last;
+					last = now;
+					if (remaining <= 0) resolve();
+					else requestAnimationFrame(tick);
+				};
+				requestAnimationFrame(tick);
+			});
+
+		const line = (cls) => {
+			const el = document.createElement('div');
+			el.className = 'ww-line' + (cls ? ' ' + cls : '');
+			body.appendChild(el);
+			return el;
+		};
+		const cursor = () => {
+			const c = document.createElement('span');
+			c.className = 'ww-cursor';
+			return c;
+		};
+
+		async function typeInto(el, text, cps) {
+			const span = document.createElement('span');
+			el.appendChild(span);
+			const c = cursor();
+			el.appendChild(c);
+			for (let i = 0; i < text.length; i++) {
+				span.textContent += text[i];
+				await sleep(cps + Math.random() * cps);
+			}
+			c.remove();
+			return span;
+		}
+
+		async function run() {
+			body.innerHTML = '';
+			for (const step of script) {
+				if (step.t === 'pause') { await sleep(step.ms); continue; }
+				if (step.t === 'cmd') {
+					const el = line(step.cls);
+					const p = document.createElement('span');
+					p.className = step.promptCls;
+					p.textContent = step.prompt;
+					el.appendChild(p);
+					el.appendChild(document.createTextNode(' '));
+					await sleep(250);
+					await typeInto(el, step.text, 22);
+					if (step.comment) {
+						const cm = document.createElement('span');
+						cm.className = 'ww-dim';
+						cm.textContent = step.comment;
+						el.appendChild(cm);
+					}
+					continue;
+				}
+				if (step.t === 'out') {
+					const el = line(step.cls);
+					el.innerHTML = step.html;
+					continue;
+				}
+				if (step.t === 'spin') {
+					const el = line('ww-spin');
+					const frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+					let i = 0;
+					const started = performance.now();
+					let elapsed = 0;
+					let last = started;
+					while (elapsed < step.ms) {
+						if (!paused) {
+							elapsed += performance.now() - last;
+							el.textContent = frames[i++ % frames.length] + ' waiting on repoA…';
+						}
+						last = performance.now();
+						await sleep(80);
+					}
+					el.remove();
+					continue;
+				}
+				if (step.t === 'stream') {
+					const el = line(step.cls);
+					await typeInto(el, step.text, 7);
+					continue;
+				}
+			}
+			await sleep(5000);
+			run();
+		}
+		run();
+	})();
+</script>

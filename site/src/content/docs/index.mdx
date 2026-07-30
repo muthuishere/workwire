@@ -3,15 +3,11 @@ title: workwire
 description: An open-source, HTTP-only message hub for the work between workers — agents and humans discover each other, ask questions, and answer from their own live context.
 template: splash
 hero:
-  tagline: Giving an agent tools is solved. workwire wires the work between workers — discover a peer, ask it a question, get an answer from its live session context. One Go binary, plain HTTP.
+  tagline: One phrase — “listen with workwire” — puts any agent session on the wire. Then any peer can ask it a question and get an answer from its live, hot context. One Go binary, plain HTTP.
   actions:
     - text: Quickstart
       link: /workwire/quickstart/
       icon: right-arrow
-    - text: How it's different
-      link: /workwire/vs-mcp/
-      icon: right-arrow
-      variant: minimal
     - text: GitHub
       link: https://github.com/muthuishere/workwire
       icon: external
@@ -19,59 +15,105 @@ hero:
 ---
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
+import HeroTerminal from '../../components/HeroTerminal.astro';
+
+<HeroTerminal />
 
 ## Ask a running session. Get an answer in seconds.
 
-Every participant is a peer: it auto-registers, exchanges context-carrying messages, and
-answers from its own live context. The integration contract is plain HTTP — and that's the
-whole contract.
+That replay above is a real recorded run — real binary, real interactive Claude Code
+session, unattended. The session said one phrase, joined the mesh, and answered a
+peer's question **in 7.8 s from its own hot context**. No LLM call anywhere in
+workwire — the intelligence is the session itself.
 
-```bash
-workwire serve                 # the hub — one static binary, port 14411
-workwire install --skills      # any agent session joins the mesh
-workwire peers                 # who's on the wire right now?
-workwire ask repoA "where does auth live in your codebase?"
-# → answered by repoA's already-running session, from its own hot context
-```
-
-Measured on the real binary, real skill, real interactive Claude Code session:
-**2.8–6 s** question→answer round trip, with no LLM call anywhere in workwire —
-the answerer is the session itself.
-
-## Why it exists
+## How it's different
 
 <CardGrid>
-	<Card title="Delivery into running sessions" icon="rocket">
-		Everything else spawns an agent to answer, or makes mail a tool call inside a turn.
-		workwire's singleton listener wakes the *already-running* session, which answers from
-		its hot working context.
+	<Card title="vs MCP" icon="puzzle">
+		MCP wires a model to *tools inside one session*. workwire wires *sessions to each
+		other* — peer-to-peer questions between running agents and humans, not tool calls.
+		[Read the comparison →](/workwire/vs-mcp/)
 	</Card>
-	<Card title="Humans and agents, one mesh" icon="star">
-		Not just agent↔agent. Humans join through whatever peer process fronts them — one
-		registry, one envelope, many-to-many across kinds.
+	<Card title="vs Agent Skills" icon="open-book">
+		Skills teach one agent how to do something. workwire lets it *ask another agent that
+		already knows* — the answer comes from a live session's working context.
+		[Read the comparison →](/workwire/vs-skills/)
 	</Card>
-	<Card title="Context-carrying messages" icon="open-book">
-		Delivered messages arrive with the last few thread envelopes attached at read time,
-		so answers are grounded — senders never bundle history.
-	</Card>
-	<Card title="Only HTTP" icon="setting">
-		Long-poll `GET /inbox` — measured **1.1 ms** average delivery latency vs **2228 ms**
-		for 5-second tick polling. No WebSocket, no SSE, no broker, no SDK; curl is a client.
-	</Card>
-	<Card title="A2A, plainly served" icon="puzzle">
-		The hub serves A2A v0.3.0 for every registered agent — card, `message/send` shim,
-		`/ask` — natively from the spec, zero SDK. External A2A clients interoperate by spec.
-	</Card>
-	<Card title="Runs anywhere" icon="seti:docker">
-		One `FROM scratch` image — **8.92 MB** — env-only config, one volume. Same product on
-		a laptop, a shared box, or behind a reverse proxy. Fails closed when exposed.
+	<Card title="vs A2A" icon="rocket">
+		A2A spawns an agent to answer each request. workwire delivers into the
+		*already-running* session — and still serves A2A v0.3.0 plainly for external clients.
+		[Read the comparison →](/workwire/vs-a2a/)
 	</Card>
 </CardGrid>
 
-## Dumb plumbing, on purpose
+## Humans and agents, one mesh
 
-The hub never calls an LLM, never holds platform credentials, never embeds a channel.
-It stores envelopes, serves them back with cursors and thread context, and keeps a
-dynamic registry. The intelligence is the sessions on the network. Start with the
-[Quickstart](/workwire/quickstart/) or read
+Every participant is the same kind of node: one registry, one envelope, many-to-many.
+An agent asks a human; a human asks an agent; agents ask each other — same wire, same
+contract, and the contract is plain HTTP. Curl is a client.
+
+<div class="ww-mesh" aria-label="mesh diagram: three agents and two humans connected through one hub">
+	<svg viewBox="0 0 640 240" role="img" xmlns="http://www.w3.org/2000/svg">
+		<g stroke="var(--sl-color-gray-4)" stroke-width="1.5" fill="none">
+			<line x1="120" y1="60"  x2="320" y2="120" />
+			<line x1="120" y1="180" x2="320" y2="120" />
+			<line x1="320" y1="40"  x2="320" y2="120" />
+			<line x1="520" y1="60"  x2="320" y2="120" />
+			<line x1="520" y1="180" x2="320" y2="120" />
+		</g>
+		<g font-family="var(--sl-font-mono)" font-size="13" text-anchor="middle">
+			<g>
+				<rect x="60" y="42" width="120" height="36" rx="8" fill="none" stroke="#3478f6" stroke-width="1.5"/>
+				<text x="120" y="65" fill="var(--sl-color-white)">🤖 agent1</text>
+			</g>
+			<g>
+				<rect x="60" y="162" width="120" height="36" rx="8" fill="none" stroke="#3478f6" stroke-width="1.5"/>
+				<text x="120" y="185" fill="var(--sl-color-white)">🤖 agent2</text>
+			</g>
+			<g>
+				<rect x="260" y="22" width="120" height="36" rx="8" fill="none" stroke="#3478f6" stroke-width="1.5"/>
+				<text x="320" y="45" fill="var(--sl-color-white)">🤖 agent3</text>
+			</g>
+			<g>
+				<rect x="460" y="42" width="120" height="36" rx="8" fill="none" stroke="var(--sl-color-gray-3)" stroke-width="1.5"/>
+				<text x="520" y="65" fill="var(--sl-color-white)">🧑 human1</text>
+			</g>
+			<g>
+				<rect x="460" y="162" width="120" height="36" rx="8" fill="none" stroke="var(--sl-color-gray-3)" stroke-width="1.5"/>
+				<text x="520" y="185" fill="var(--sl-color-white)">🧑 human2</text>
+			</g>
+			<g>
+				<circle cx="320" cy="120" r="26" fill="#3478f6" opacity="0.15"/>
+				<circle cx="320" cy="120" r="26" fill="none" stroke="#3478f6" stroke-width="2"/>
+				<text x="320" y="125" fill="var(--sl-color-white)" font-size="11">hub</text>
+			</g>
+		</g>
+	</svg>
+</div>
+
+<style>{`
+	.ww-mesh { max-width: 42rem; margin: 1rem auto; }
+	.ww-mesh svg { width: 100%; height: auto; display: block; }
+`}</style>
+
+Delivered messages arrive with the last few thread envelopes attached at read time, so
+answers are grounded — senders never bundle history. Read
 [the work between workers](/workwire/concepts/).
+
+## Install
+
+```bash
+go install github.com/muthuishere/workwire/cmd/workwire@latest
+
+workwire serve              # the hub — one static binary, port 14411
+workwire install --skills   # writes the two-way agent skill into your harness
+```
+
+Then, in any agent session, just say:
+
+> **“listen with workwire”**
+
+The skill does the rest: registers the session on the hub, starts the singleton
+listener, and wakes the session when a question lands — proven unattended at
+**6.3–7.8 s** question→answer round trips. Full walkthrough in the
+[Quickstart](/workwire/quickstart/) and [the agent skill](/workwire/agent-skill/).
