@@ -1,0 +1,50 @@
+---
+title: ADRs & specs
+description: The design record — eight ADRs, the normative openspec, the spike evidence, and the research behind the positioning.
+---
+
+workwire is built ADR → spikes → openspec → implementation, in that order. The docs on
+this site are the narrative; these are the sources of truth in the repository.
+
+## Architecture Decision Records
+
+[`docs/adr/`](https://github.com/muthuishere/workwire/tree/main/docs/adr)
+
+- **ADR-001** — hub-core is a dumb, LLM-free, HTTP-only message hub (envelope, cursors, long-poll, config)
+- **ADR-002** — hub-native A2A registry and relay, no client-library dependency (pinned v0.3.0)
+- **ADR-003** — the two-way agent skill: auto-register + subscriber answer loop
+- **ADR-004** — workwire ships only HTTP; every non-agent participant is an external peer (zero channel code)
+- **ADR-005** — contacts directory: find people without raw ids (TOFU)
+- **ADR-006** — the hub is container-portable: local and hosted are the same product
+- **ADR-007** — identity and auth: hub-issued credentials, explicit `authMode`, fail-closed exposure
+- **ADR-008** — retention, tombstone deletion, and liveness lifecycle
+
+## Normative specs (openspec)
+
+[`openspec/specs/`](https://github.com/muthuishere/workwire/tree/main/openspec/specs) —
+every requirement with GIVEN/WHEN/THEN scenarios:
+[hub-core](https://github.com/muthuishere/workwire/blob/main/openspec/specs/hub-core/spec.md) ·
+[registry-a2a](https://github.com/muthuishere/workwire/blob/main/openspec/specs/registry-a2a/spec.md) ·
+[auth](https://github.com/muthuishere/workwire/blob/main/openspec/specs/auth/spec.md) ·
+[agent-skill](https://github.com/muthuishere/workwire/blob/main/openspec/specs/agent-skill/spec.md) ·
+[contacts](https://github.com/muthuishere/workwire/blob/main/openspec/specs/contacts/spec.md)
+
+## Evidence
+
+- [Spikes](https://github.com/muthuishere/workwire/tree/main/spikes) — 01 question→session→answer
+  (file-inbox delivery won), 02 long-poll/context/container (the 1.1 ms vs 2228 ms numbers),
+  03 external peer + A2A card conformance.
+- [Live-session wake experiment](https://github.com/muthuishere/workwire/blob/main/docs/wake-experiment.md) —
+  the 2.8–6 s round trip on a real interactive Claude Code session.
+- [Spec stress-test](https://github.com/muthuishere/workwire/blob/main/docs/spec-stress-test.md) and
+  [stress-team report](https://github.com/muthuishere/workwire/blob/main/docs/stress-team-report.md) —
+  the adversarial review that produced ADR-007/008.
+- [Competitive research](https://github.com/muthuishere/workwire/blob/main/docs/research.md) —
+  the full landscape snapshot behind [the landscape](/workwire/landscape/) page.
+
+## The standards workwire speaks
+
+- **[Agent2Agent (A2A)](https://a2a-protocol.org)** — served natively at v0.3.0: card,
+  `message/send` shim, plain ask. See [vs A2A](/workwire/vs-a2a/).
+- **[Agent Skills](https://www.anthropic.com/news/skills)** — the packaging workwire ships
+  in: `workwire install --skills`. See [vs Agent Skills](/workwire/vs-skills/).
