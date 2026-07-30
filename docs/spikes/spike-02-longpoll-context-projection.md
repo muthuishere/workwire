@@ -14,6 +14,8 @@ Timebox: 0.5 day
 - NDJSON store + integer cursors (proven design from the old messenger).
 - Measure: latency of long-poll vs 5s tick; payload size at lastMessages = 3/5/10 on a
   50-message thread; behavior when the client's cursor is older than a truncated file.
+- Container leg: hub in a scratch image behind a tiny Go reverse proxy enforcing a 30s idle
+  timeout (no nginx); prove receive loop + cursor survival across a container redeploy.
 - Validate `reply_to:"last"` semantics on top of the same store.
 
 ## Success criteria

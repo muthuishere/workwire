@@ -22,7 +22,8 @@ Date: 2026-07-30 · Verdict per scenario: PASS (spec covers it) / FIXED (spec am
 
 ## Spike amendments
 
-- **Spike-02** gains a containerized leg: run the hub via the scratch image behind a proxy
-  (nginx, 30s idle timeout) and prove the curl receive loop + cursor survival across a
+- **Spike-02** gains a containerized leg: run the hub via the scratch image behind a
+  timeout-enforcing reverse proxy written in Go (`httputil.ReverseProxy`, ~20 lines, 30s idle
+  timeout — no nginx; we have Go) and prove the curl receive loop + cursor survival across a
   container redeploy.
 - **Spike-01** must also cover scenario 11 (offline target → answer on reconnect).
