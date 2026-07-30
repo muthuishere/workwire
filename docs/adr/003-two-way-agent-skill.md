@@ -38,5 +38,9 @@ context) — one skill, both directions.
 
 - Any agent (Claude Code, Codex, a plain script) joins with one install + one invoke.
 - Answer quality depends on the context manifest → its shape is part of Spike-01.
+- **`agenthub listen` is a singleton per agent** — enforced with a lockfile + liveness check
+  (`~/.config/agenthub/run/<agent>.lock`, stale locks reaped). Re-invoking the skill adopts
+  the running listener instead of spawning a second; two loops answering the same question
+  must be impossible by construction.
 - The listen process is per-agent, cheap, and supervised by the skill (restarted on next
   invoke if dead).

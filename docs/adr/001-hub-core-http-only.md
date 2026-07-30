@@ -27,9 +27,16 @@ agent-hub is a from-scratch, open-source rebuild.
 - **Messages carry context at read time.** The hub stores single copies; when delivering a
   message it attaches `context: [last X messages of the thread]`. Senders never bundle history.
   `GET /threads/<id>?last=N` serves more on demand.
-- Static settings live in `~/.config/agenthub/agenthubconfig.json` (port, data dir,
-  `lastMessages` context depth, timeouts). The file is optional — defaults work with no file.
-  Everything dynamic (agents, adapters) is runtime state via the API (ADR-002), never config.
+- Static settings live in `~/.config/agenthub/agenthubconfig.json` (`hubUrl`, port, bind
+  address, data dir, `lastMessages` context depth, timeouts, auth token env NAME). The file
+  is **auto-created with defaults on first run** of any agenthub verb — users edit, never
+  bootstrap. Every setting has an `AGENTHUB_*` env override (containers may have no home dir
+  or run env-only with no file at all). Everything dynamic (agents, adapters) is runtime
+  state via the API (ADR-002), never config.
+- **The hub may be remote (e.g. in a container).** All client verbs resolve the hub via
+  `hubUrl` (default `http://127.0.0.1:14411`). The
+  auto-start-a-hub-if-missing behavior applies ONLY when `hubUrl` is loopback; a remote
+  `hubUrl` is never auto-started, only probed via `/health`.
 - Language: **Go**, single static binary, minimal deps. (Chosen for the one-binary OSS story;
   revisit only if a TS ecosystem play outweighs it.)
 
