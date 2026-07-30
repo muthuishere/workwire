@@ -19,7 +19,7 @@ The spec must survive all three without forks in behavior.
 - **Bind vs reach are separate concerns.** `bind` (default `127.0.0.1`, containers set
   `0.0.0.0`) is server-side; `hubUrl` is client-side. Auto-start only ever applies to a
   loopback `hubUrl`.
-- **Auth flips on automatically when non-local.** Loopback hub: no token needed. Bound
+- **[SUPERSEDED by ADR-007]** ~~Auth flips on automatically when non-local.~~ Auth is now an explicit `authMode` (token|open), never inferred from bind address — see ADR-007. Original text kept for the record: Loopback hub: no token needed. Bound
   non-loopback or fronted by a proxy: bearer token required (`WORKWIRE_TOKEN_ENV` names the
   variable; values never in config, echoing your secrets rule). The hub fails closed if
   bound non-loopback with no token configured.

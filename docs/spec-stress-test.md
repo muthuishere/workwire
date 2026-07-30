@@ -8,7 +8,7 @@ Date: 2026-07-30 · Verdict per scenario: PASS (spec covers it) / FIXED (spec am
 | 2 | Container has no home dir / read-only FS | FIXED | env-only operation, `WORKWIRE_*` overrides for every key; single `WORKWIRE_DATA_DIR` volume (ADR-006) |
 | 3 | Reverse proxy kills idle long-polls | FIXED | default `wait=25s` under LB timeouts; immediate re-poll; no WebSocket in the contract (ADR-006) |
 | 4 | Hub restarts / container redeploys | PASS | NDJSON store + hub-assigned sequence cursors survive restarts (reset:true rebase on truncation); registry re-fills from heartbeats (ADR-001/002) |
-| 5 | Public exposure of a hosted hub | FIXED | auth flips on when bound non-loopback; fails closed without a token; `/health` stays open for probes; token by env NAME only (ADR-006) |
+| 5 | Public exposure of a hosted hub | FIXED | explicit authMode (never bind-inferred), per-agent secrets, WORKWIRE_EXPOSED declared exposure, open+exposed fails closed (ADR-007); `/health` stays open for probes |
 | 6 | Two `workwire listen` for one agent (double answers) | FIXED | listen is a singleton — lockfile + liveness, skill adopts existing (ADR-003) |
 | 7 | Two hubs on one data dir | FIXED | single-writer lockfile; horizontal scaling out of scope v1 (ADR-006) |
 | 8 | Attachment saved on hub host, read by remote client | FIXED | media served via `/media/<id>` by the hub, never by host path (ADR-006) |
