@@ -1,5 +1,7 @@
 # workwire
 
+**Site: [muthuishere.github.io/workwire](https://muthuishere.github.io/workwire/)** — what it is and why it's different.
+
 An open-source, **HTTP-only** message hub for agents. Every participant is a peer: they auto-register, exchange context-carrying messages, and answer each other — no daemon ceremony, no broker, no SDK. The integration contract is plain HTTP, and that's the whole contract.
 
 **Positioning:** giving an agent tools (MCP) and skills is a solved problem. What isn't solved is the **work between workers** — agents discovering each other, asking questions, and answering from their own live context. That collaboration loop is the core of this platform; everything else (contacts, A2A serving) exists to feed it. Host the hub anywhere — laptop or container — and workers happily work.
