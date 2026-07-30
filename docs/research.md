@@ -16,7 +16,7 @@ Three concentric rings compete or overlap:
 
 1. **Protocol / registry layer** — A2A (Linux Foundation), AGNTCY + SLIM, NANDA, Coral Protocol, A2A registries. These standardize the wire format and discovery, but ship no "deliver into a live interactive session" story.
 2. **Broker / framework runtimes** — Solace Agent Mesh, Microsoft Agent Framework (AutoGen successor), LangGraph Platform, CrewAI, OpenAI Agents SDK handoffs. Agents live *inside* the framework's process model; communication is intra-framework.
-3. **Coding-session multiplexers & phone bridges** — MCP Agent Mail, workwire-mcp, MCP Talk, OpenACP, ccgram, TMAI/Tmux-Orchestrator/claude-squad, OpenClaw. Closest in spirit; mostly MCP- or tmux-bound, mostly hub-and-human rather than peer-to-peer agent asks.
+3. **Coding-session multiplexers & phone bridges** — MCP Agent Mail, agent-hub-mcp (gilbarbara), MCP Talk, OpenACP, ccgram, TMAI/Tmux-Orchestrator/claude-squad, OpenClaw. Closest in spirit; mostly MCP- or tmux-bound, mostly hub-and-human rather than peer-to-peer agent asks.
 
 ## 2. Comparison table
 
@@ -32,7 +32,7 @@ Three concentric rings compete or overlap:
 | **Microsoft Agent Framework / AutoGen runtime** | Framework: agent runtime, handoffs, group chat | In-process / gRPC runtime | Yes — write agents in the framework | Framework-internal registration | MIT | Very mature, large community | Agents must be authored in it; can't make an existing Claude Code session a peer |
 | **LangGraph Platform / CrewAI / OpenAI Agents SDK (handoffs) / CAMEL** | Orchestration frameworks; handoffs = intra-app delegation | In-process; platform APIs | Yes — framework + (for platforms) hosted runtime | Framework-internal | MIT/Apache (SDKs); platforms commercial | Very mature | Same story: orchestration *inside one app*, not messaging between independent live sessions |
 | **MCP Agent Mail** | Mailbox for AI coding agents: identities, threaded messages, file reservations, audit; SQLite+Git | MCP server (stdio/HTTP) | MCP-capable agents only | Contact handshake protocol between projects | OSS | Active, niche but the most direct adjacent | Very close in intent. But MCP tool-call model = agent must *poll/check mail* inside a turn; no listener loop delivering questions into an idle live session; no channel/human peers; no A2A |
-| **workwire-mcp (gilbarbara), MCP Talk, swarm-mcp** | Small MCP servers for inter-agent messaging / spawning | MCP | MCP only | Static/manual | MIT-ish | Small (<1k★ each, uncertain) | Same MCP-turn limitation; also — note the name collision (see §5) |
+| **agent-hub-mcp (gilbarbara), MCP Talk, swarm-mcp** | Small MCP servers for inter-agent messaging / spawning | MCP | MCP only | Static/manual | MIT-ish | Small (<1k★ each, uncertain) | Same MCP-turn limitation; also — note the name collision (see §5) |
 | **OpenACP** | Self-hosted bridge: Telegram/Discord/Slack ↔ coding agents via Agent Client Protocol | ACP (editor-agent protocol) over messaging platforms | Agent must speak ACP | Manual config | OSS | Early | Human→agent remote control, not agent↔agent asks; no registry/contacts |
 | **ccgram** | Telegram ↔ tmux bridge for Claude Code/Codex/Gemini; parallel session mgmt | Telegram bot + tmux inject | tmux; single-user | Manual session list | OSS | Small, active | Phone remote-control of sessions; no peer messaging between agents, no context-carrying threads |
 | **TMAI / Tmux-Orchestrator / claude-squad / dmux / thurbox** | tmux multiplexers/orchestrators for many coding agent sessions, some with two-way messaging | tmux keystroke injection; some local IPC | tmux + same machine | Manual/spawned | OSS | Fast-moving hobby→serious tier | Machine-local, injection-based (fragile), orchestrator-centric. workwire is network HTTP, cross-machine, peer model |
@@ -86,18 +86,18 @@ All human→agent remote control. OpenClaw (ex-Warelay/Moltbot, ~347k★ by Apr 
 - **Coral Protocol** — funded, conceptually closest (threads/mentions/registry); could strip its crypto layer and ship a lightweight mode.
 - **MCP Agent Mail** — a push-delivery + channels release would collide directly; it already owns coding-agent-coordination mindshare in the MCP world.
 
-## 5. Naming collision check: "workwire" / "workwire"
+## 5. Naming collision check: "agent-hub" / "agenthub" (resolved — we renamed to workwire)
 
 The name is **heavily contested** on GitHub — at least eight active or notable projects:
 
-- `mudler/workwire` — LocalAI/LocalAGI agent-configuration hub (mudler is LocalAI's author; visible project).
-- `DjangoPeng/workwire` — Chinese-language hub of agent apps (GitHub Sentinel, ChatPPT); sizable following.
-- `gilbarbara/workwire-mcp` — **an MCP server for communication/coordination between multiple AI agents** — a near-identical name *in the same niche*.
+- `mudler/AgentHub` — LocalAI/LocalAGI agent-configuration hub (mudler is LocalAI's author; visible project).
+- `DjangoPeng/agent-hub` — Chinese-language hub of agent apps (GitHub Sentinel, ChatPPT); sizable following.
+- `gilbarbara/agent-hub-mcp` — **an MCP server for communication/coordination between multiple AI agents** — a near-identical name *in the same niche*.
 - `ottogin/workwire` — fork of a Karpathy "workwire" (bare git repo + message board for agent swarms) — Karpathy association gives this name-form high visibility.
 - `Stanshy/AgentHub` — Electron app managing 47 Claude Code agents ("Harness Engineering").
-- `nathangtg/workwire`, `k0msenapati/workwire`, org `AI-Agent-Hub` — smaller MCP/data-agent platforms.
+- `nathangtg/agent-hub`, `k0msenapati/agenthub`, org `AI-Agent-Hub` — smaller MCP/data-agent platforms.
 
-Also: Hugging Face "Hub" + agents, and various commercial "Agent Hub" products (GreyNoise, Salesforce-adjacent naming) crowd search results. **Verdict:** "workwire" is effectively unownable for search, npm/brew discoverability, and disambiguation — a rename (or a distinctive qualified name) is strongly advisable before public launch. The gilbarbara MCP project and the Karpathy-fork are the most damaging collisions because they sit in the same conceptual space.
+Also: Hugging Face "Hub" + agents, and various commercial "Agent Hub" products (GreyNoise, Salesforce-adjacent naming) crowd search results. **Verdict:** "agent-hub" was effectively unownable for search, npm/brew discoverability, and disambiguation — a rename was strongly advisable before public launch — DONE: the project is now **workwire** (repo renamed 2026-07-30; zero exact GitHub collisions, npm free at check time). The gilbarbara MCP project and the Karpathy-fork are the most damaging collisions because they sit in the same conceptual space.
 
 ## 6. Sources
 
@@ -109,7 +109,7 @@ Also: Hugging Face "Hub" + agents, and various commercial "Agent Hub" products (
 - NANDA: https://thenewstack.io/how-mits-project-nanda-aims-to-decentralize-ai-agents/ · https://github.com/projnanda · https://arxiv.org/pdf/2507.14263
 - Coral: https://github.com/Coral-Protocol/coral-server · https://www.marktechpost.com/2025/09/20/an-internet-of-ai-agents-coral-protocol-introduces-coral-v1-an-mcp-native-runtime-and-registry-for-cross-framework-ai-agents/ · https://arxiv.org/pdf/2505.00749
 - Frameworks/gateways: https://www.truefoundry.com/blog/multi-agent-orchestration-tools · https://www.mintmcp.com/blog/agent-gateways-multi-agent-workflows
-- MCP inter-agent messaging: https://mcpagentmail.com/ · https://github.com/gilbarbara/workwire-mcp · https://stiege.github.io/swarm-mcp/ · https://glama.ai/mcp/servers/@devinvenable/mcp-talk
+- MCP inter-agent messaging: https://mcpagentmail.com/ · https://github.com/gilbarbara/agent-hub-mcp · https://stiege.github.io/swarm-mcp/ · https://glama.ai/mcp/servers/@devinvenable/mcp-talk
 - Bridges/multiplexers: https://github.com/Open-ACP/OpenACP · https://github.com/alexei-led/ccgram · https://github.com/trust-delta/tmai · https://github.com/absmartly/Tmux-Orchestrator · https://github.com/MatchaOnMuffins/orchestrator · https://shipyard.build/blog/claude-code-multi-agent/ · https://pub.towardsai.net/claude-code-channels-message-your-ai-coding-agent-from-telegram-and-discord-2026-5f263ccc4b9c
 - OpenClaw: https://www.jitendrazaa.com/blog/ai/clawdbot-complete-guide-open-source-ai-assistant-2026/ · https://openclaw.ai/
-- Name collisions: https://github.com/mudler/workwire · https://github.com/DjangoPeng/workwire · https://github.com/ottogin/workwire · https://github.com/Stanshy/AgentHub · https://github.com/nathangtg/workwire · https://github.com/k0msenapati/workwire
+- Name collisions: https://github.com/mudler/AgentHub · https://github.com/DjangoPeng/agent-hub · https://github.com/ottogin/workwire · https://github.com/Stanshy/AgentHub · https://github.com/nathangtg/agent-hub · https://github.com/k0msenapati/agenthub
