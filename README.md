@@ -1,4 +1,4 @@
-# agent-hub
+# workwire
 
 An open-source, HTTP-only message hub for agents. Terminals, agents, and channel adapters are all peers: they auto-register, exchange context-carrying messages, and answer each other — no daemon ceremony, no broker.
 
@@ -8,7 +8,7 @@ An open-source, HTTP-only message hub for agents. Terminals, agents, and channel
 
 Core ideas:
 - **hub-core**: tiny LLM-free HTTP server — envelope store, `GET /inbox?since=N` long-poll, agent registry.
-- **Two-way agent skill**: `agenthub install --skills` gives any agent a skill that registers it on the hub AND spawns a subscriber loop that waits for questions and answers from its own context.
+- **Two-way agent skill**: `workwire install --skills` gives any agent a skill that registers it on the hub AND spawns a subscriber loop that waits for questions and answers from its own context.
 - **Context-carrying messages**: replies travel with their thread history, so answers are grounded.
-- **Agent-side intelligence via [toolnexus](https://github.com/muthuishere/toolnexus)** (A2A-style); the hub itself stays dumb plumbing.
+- **No model anywhere in workwire**: the hub is dumb plumbing and the answerer is the agent session itself; A2A is plainly served for external clients (toolnexus/ADK/curl interoperate by spec, no dependency).
 - **Channels (telegram/whatsapp/teams) as external adapter peers**, not built-ins.

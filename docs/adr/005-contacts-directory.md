@@ -12,9 +12,9 @@ conversation ids the user discovered manually. "Find people and send data" needs
 - The hub maintains a **contacts store** harvested automatically from traffic: every inbound
   envelope's sender (name, peer/adapter, platform id, last-seen) is upserted into
   `contacts.ndjson` in the data dir. Explicit adds/aliases via `POST /contacts`.
-- `GET /contacts?q=` does fuzzy name lookup; `agenthub send --to "Suguna"` resolves through
+- `GET /contacts?q=` does fuzzy name lookup; `workwire send --to "Suguna"` resolves through
   it (ambiguity → the caller gets the candidate list, no guessing).
-- Registered agents (ADR-002) and contacts are both "people": `agenthub peers` merges the
+- Registered agents (ADR-002) and contacts are both "people": `workwire peers` merges the
   live agent registry with the contacts directory.
 
 ## Consequences

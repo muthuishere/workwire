@@ -4,25 +4,25 @@ Status: accepted · Date: 2026-07-30
 
 ## Context
 
-The product promise: `agenthub install --skills` and any agent session is on the network —
+The product promise: `workwire install --skills` and any agent session is on the network —
 no owner, no wiring. The skill must be **two-way**: it registers the agent (outbound identity
 + send verbs) AND runs a subscriber loop (inbound questions → answers from the agent's own
 context) — one skill, both directions.
 
 ## Decision
 
-- `agenthub install --skills` writes the embedded skill (go:embed) into the agent's skills
+- `workwire install --skills` writes the embedded skill (go:embed) into the agent's skills
   directory. On first invocation in a session the skill:
   1. **Registers**: ensures a hub is reachable (starts one if not — ADR-001), then
      `POST /agents` with an agent card derived from the session (name, cwd/project,
      capabilities). Heartbeat keeps it live.
-  2. **Spawns the subscriber**: `agenthub listen --agent <name>` as a separate background
+  2. **Spawns the subscriber**: `workwire listen --agent <name>` as a separate background
      process that long-polls the agent's inbox and answers questions **from that agent's
      context** (its repo, docs, memory — captured as a context manifest at register time).
-  3. Exposes the outbound verbs in-session: `agenthub peers` (find people), `agenthub send`,
-     `agenthub ask <agent> "<question>"` (A2A ask, waits for the answer).
-- **The answerer is the agent session itself.** agenthub never owns a model and never makes
-  an LLM call — the agents on the network are the intelligence. `agenthub listen` is a dumb
+  3. Exposes the outbound verbs in-session: `workwire peers` (find people), `workwire send`,
+     `workwire ask <agent> "<question>"` (A2A ask, waits for the answer).
+- **The answerer is the agent session itself.** workwire never owns a model and never makes
+  an LLM call — the agents on the network are the intelligence. `workwire listen` is a dumb
   waiter: it long-polls the hub and, when a question arrives, delivers it into the
   already-running agent session (the session that installed the skill), which answers from
   its own live context and sends the reply back through the hub. This is the agent-telegram
@@ -38,8 +38,8 @@ context) — one skill, both directions.
 
 - Any agent (Claude Code, Codex, a plain script) joins with one install + one invoke.
 - Answer quality depends on the context manifest → its shape is part of Spike-01.
-- **`agenthub listen` is a singleton per agent** — enforced with a lockfile + liveness check
-  (`~/.config/agenthub/run/<agent>.lock`, stale locks reaped). Re-invoking the skill adopts
+- **`workwire listen` is a singleton per agent** — enforced with a lockfile + liveness check
+  (`~/.config/workwire/run/<agent>.lock`, stale locks reaped). Re-invoking the skill adopts
   the running listener instead of spawning a second; two loops answering the same question
   must be impossible by construction.
 - The listen process is per-agent, cheap, and supervised by the skill (restarted on next

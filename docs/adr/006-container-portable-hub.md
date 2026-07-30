@@ -10,17 +10,17 @@ The spec must survive all three without forks in behavior.
 
 ## Decision
 
-- **One binary, one image.** `agenthub serve` is the only entrypoint; the official
+- **One binary, one image.** `workwire serve` is the only entrypoint; the official
   `Dockerfile` is `FROM scratch` + the static Go binary. State is exactly one directory
-  (`AGENTHUB_DATA_DIR`, default `~/.config/agenthub/data`) → one volume mount.
-- **Env-only operation.** Every config key has an `AGENTHUB_*` env var; a container needs no
-  home dir and no config file. On a normal host, `agenthubconfig.json` is auto-created with
+  (`WORKWIRE_DATA_DIR`, default `~/.config/workwire/data`) → one volume mount.
+- **Env-only operation.** Every config key has an `WORKWIRE_*` env var; a container needs no
+  home dir and no config file. On a normal host, `workwire.json` is auto-created with
   defaults on first run.
 - **Bind vs reach are separate concerns.** `bind` (default `127.0.0.1`, containers set
   `0.0.0.0`) is server-side; `hubUrl` is client-side. Auto-start only ever applies to a
   loopback `hubUrl`.
 - **Auth flips on automatically when non-local.** Loopback hub: no token needed. Bound
-  non-loopback or fronted by a proxy: bearer token required (`AGENTHUB_TOKEN_ENV` names the
+  non-loopback or fronted by a proxy: bearer token required (`WORKWIRE_TOKEN_ENV` names the
   variable; values never in config, echoing your secrets rule). The hub fails closed if
   bound non-loopback with no token configured.
 - **Proxy-safe long-poll.** Default `wait` is 25s (under common 30–60s LB/proxy idle

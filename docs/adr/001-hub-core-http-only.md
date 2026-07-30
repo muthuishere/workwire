@@ -10,11 +10,11 @@ and `/health` discovery. Its complexity came from an installed daemon (config re
 restart to change anything), an owner-vs-agent role doctrine, push subscriptions that forced
 consumers to run HTTP servers, and per-channel registration ceremonies.
 
-agent-hub is a from-scratch, open-source rebuild.
+workwire is a from-scratch, open-source rebuild.
 
 ## Decision
 
-- hub-core (`agenthub serve`) is **dumb plumbing**: it stores envelopes, serves them back, and
+- hub-core (`workwire serve`) is **dumb plumbing**: it stores envelopes, serves them back, and
   keeps a registry. It never calls an LLM, never holds platform credentials, never embeds a
   channel.
 - **HTTP is the only required transport.** Receive is `GET /inbox?since=N` with optional
@@ -23,14 +23,14 @@ agent-hub is a from-scratch, open-source rebuild.
 - **No push subscriptions, no consumer HTTP servers.** Every consumer polls with its own
   locally persisted cursor.
 - **No daemon install ceremony.** Any peer that finds no hub on the configured port may start
-  one (`/health` returns `{"service":"agenthub"}` as the discover-don't-start probe).
+  one (`/health` returns `{"service":"workwire"}` as the discover-don't-start probe).
 - **Messages carry context at read time.** The hub stores single copies; when delivering a
   message it attaches `context: [last X messages of the thread]`. Senders never bundle history.
   `GET /threads/<id>?last=N` serves more on demand.
-- Static settings live in `~/.config/agenthub/agenthubconfig.json` (`hubUrl`, port, bind
+- Static settings live in `~/.config/workwire/workwire.json` (`hubUrl`, port, bind
   address, data dir, `lastMessages` context depth, timeouts, auth token env NAME). The file
-  is **auto-created with defaults on first run** of any agenthub verb — users edit, never
-  bootstrap. Every setting has an `AGENTHUB_*` env override (containers may have no home dir
+  is **auto-created with defaults on first run** of any workwire verb — users edit, never
+  bootstrap. Every setting has an `WORKWIRE_*` env override (containers may have no home dir
   or run env-only with no file at all). Everything dynamic (agents, adapters) is runtime
   state via the API (ADR-002), never config.
 - **The hub may be remote (e.g. in a container).** All client verbs resolve the hub via

@@ -7,7 +7,7 @@ Timebox: 0.5 day
 1. Does `GET /inbox?since=N&wait=30` give push-like latency with curl-grade simplicity
    (no reconnect state machine, safe against restarts)?
 2. Is read-time context projection (`context: [last X thread messages]`, X from
-   `agenthubconfig.json` `lastMessages`) enough for grounded answers without payload bloat?
+   `workwire.json` `lastMessages`) enough for grounded answers without payload bloat?
 
 ## Plan
 

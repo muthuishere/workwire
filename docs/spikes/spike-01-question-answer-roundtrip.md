@@ -5,16 +5,16 @@ Timebox: 1 day · Risk being retired: the core product loop
 ## Question
 
 Can a question posted to the hub reach an already-running agent session, get answered from
-that session's live context, and return to the asker — with no LLM call anywhere in agenthub?
+that session's live context, and return to the asker — with no LLM call anywhere in workwire?
 
 ## Plan
 
 1. Stub hub: in-memory envelope store + `POST /send`, `GET /inbox?since=N&wait=30`,
    `POST /agents`, `GET /agents`.
-2. `agenthub listen` prototype: long-polls the inbox for its agent, delivers each question
+2. `workwire listen` prototype: long-polls the inbox for its agent, delivers each question
    into the running session (agent-telegram pattern — session wakes on inbound and acts),
    session answers on the thread via `POST /send`.
-3. Asker: `agenthub ask <agent> "<q>"` → posts, polls the thread, prints the answer.
+3. Asker: `workwire ask <agent> "<q>"` → posts, polls the thread, prints the answer.
 4. Run two real Claude Code sessions in different repos; each asks the other a question only
    answerable from the other's repo context.
 
