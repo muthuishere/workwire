@@ -19,6 +19,12 @@ Date: 2026-07-30 · Verdict per scenario: PASS (spec covers it) / FIXED (spec am
 | 13 | 200-message thread context bloat | PASS | read-time projection capped by `lastMessages`; full thread by explicit fetch (ADR-001, Spike-02) |
 | 14 | External A2A client (no skill) asks our agent | SPIKE | card validated + curl-client round trip proven (Spike-03); strict SDK client needs the pinned v0.3.0 `message/send` shim (ADR-002) — SDK conformance still open |
 | 15 | Config missing on first run | FIXED | `workwire.json` auto-created with defaults by any verb (ADR-001) |
+| 16 | Impersonation attempt (register as an existing name) | FIXED | second registration gets 409 + suggestion; `from` stamped server-side from hub-issued credentials — no silent takeover (ADR-007) |
+| 17 | Hub behind reverse proxy, bound loopback | FIXED | explicit `authMode` never inferred from bind; `WORKWIRE_EXPOSED=1` declares exposure and forces token auth; open+exposed refuses to start (ADR-007) |
+| 18 | Container restart leaves a stale lock | FIXED | OS-held advisory lock (flock/F_SETLK) dies with the process — never stale after kill -9 or redeploy; pid lockfiles dropped (ADR-003) |
+| 19 | Two hosts run `listen` for the same agent | FIXED | hub-side listen lease per agentId, renewed with heartbeat; local flock is only the fast path (ADR-003) |
+| 20 | Prompt-injection question against answer-only default | FIXED | inbound text is data, never instructions; authenticated provenance on envelopes; no shell/write tools on inbound-triggered turns unless opted in (ADR-003/007) |
+| 21 | Real interactive session wake (idle / mid-turn / fresh) | SPIKE | file-inbox delivery proven only with simulated sessions (Spike-01); measured wake latency on a real Claude Code session + one non-Claude harness gates the v1 promise (ADR-003) |
 
 ## Spike amendments
 

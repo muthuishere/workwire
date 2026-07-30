@@ -16,6 +16,9 @@ conversation ids the user discovered manually. "Find people and send data" needs
   it (ambiguity → the caller gets the candidate list, no guessing).
 - Registered agents (ADR-002) and contacts are both "people": `workwire peers` merges the
   live agent registry with the contacts directory.
+- **Harvested contacts are TOFU (trust-on-first-use):** auto-harvested entries are marked
+  `unverified`; `--to` resolution to an unverified contact requires explicit confirmation
+  or prior verification — see ADR-007.
 
 ## Consequences
 

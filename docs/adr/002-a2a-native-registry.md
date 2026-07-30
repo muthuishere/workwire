@@ -26,9 +26,16 @@ loops. The A2A surface needed is small — a card JSON, task send, result poll.
 - Per registered agent the hub serves:
   - `GET /agents/<name>/card` — A2A agent card (spec-conformant JSON)
   - `POST /agents/<name>/ask` — plain serving, no relay machinery: the hub writes an
-    envelope addressed to the agent and returns `{thread_id}`; the asker reads the answer
-    off the thread (`GET /threads/<id>`), optionally with `?wait=` long-poll sugar. The hub
-    never holds tasks or tracks completion state.
+    envelope addressed to the agent and returns `{thread_id, message_id}`; the asker reads
+    the answer off the thread (`GET /threads/<id>`), optionally with `?wait=` long-poll
+    sugar. The hub never holds tasks or tracks completion state.
+- **/ask completion semantics:** an ask is complete when an envelope with
+  `reply_to == the question's message_id` arrives on the thread — nothing else terminates
+  a `?wait=`. Context projections are read-only and stripped (`kind: "context"`), so they
+  can never be mistaken for the answer.
+- **/health carries versions:** the response gains `schemaVersion` (envelope) and
+  `apiVersion` (hub surface) fields, giving polling peers a negotiation path when the
+  envelope evolves.
 - A2A tasks are **not a second data model** — a task is a threaded envelope with a completion
   semantic. Conversation (multi-party, async) stays plain envelopes; A2A is the
   request/response face over the same store.
