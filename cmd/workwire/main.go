@@ -349,8 +349,10 @@ func cmdAsk(cfg config.Config, args []string) error {
 	fs := flag.NewFlagSet("ask", flag.ExitOnError)
 	as := fs.String("as", "", "act as a registered agent")
 	timeout := fs.Duration("timeout", 5*time.Minute, "overall wait for the answer")
-	fs.Parse(args)
-	rest := fs.Args()
+	rest, err := parseInterspersed(fs, args)
+	if err != nil {
+		return err
+	}
 	if len(rest) < 2 {
 		return fmt.Errorf("usage: workwire ask <agent> <question>")
 	}
@@ -405,4 +407,21 @@ func cmdAsk(cfg config.Config, args []string) error {
 		}
 	}
 	return fmt.Errorf("no answer within %s", *timeout)
+}
+
+// parseInterspersed parses flags that may appear before, between, or after
+// positional args (Go's flag package stops at the first positional).
+func parseInterspersed(fs *flag.FlagSet, args []string) ([]string, error) {
+	var pos []string
+	for {
+		if err := fs.Parse(args); err != nil {
+			return nil, err
+		}
+		args = fs.Args()
+		if len(args) == 0 {
+			return pos, nil
+		}
+		pos = append(pos, args[0])
+		args = args[1:]
+	}
 }
