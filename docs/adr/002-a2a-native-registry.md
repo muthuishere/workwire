@@ -32,5 +32,5 @@ loops. The A2A surface needed is small — a card JSON, task send, result poll.
 - "Find people and send data" = `GET /agents` + `POST /agents/<name>/ask` — two calls.
 - The riskiest piece is not the hub (plain serving) but the delivery of a question into a
   running agent session and its answer coming back → Spike-01 proves the full round trip.
-- Channel adapters register through the same door (ADR-004), so humans-on-telegram and
-  agents-on-terminals are uniformly addressable.
+- Any external peer registers through the same door (ADR-004) — bridges someone else runs,
+  scripts, other hubs — so every participant is uniformly addressable over plain HTTP.

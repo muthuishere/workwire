@@ -1,4 +1,9 @@
-# Spike-03: telegram as an external adapter peer + A2A plain serving
+# Spike-03: external peer over HTTP + A2A plain serving
+
+> **Scope note (2026-07-30):** telegram is OUT of workwire's product scope (ADR-004: only
+> HTTP, zero channel code ships). This spike used a telegram-shaped external process purely
+> as the guinea pig to prove that ANY peer can join over plain HTTP with zero hub changes.
+> The proof stands; the telegram part is disposable evidence, not product.
 
 Timebox: 1 day
 
