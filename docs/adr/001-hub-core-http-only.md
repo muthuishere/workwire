@@ -17,16 +17,29 @@ workwire is a from-scratch, open-source rebuild.
 - hub-core (`workwire serve`) is **dumb plumbing**: it stores envelopes, serves them back, and
   keeps a registry. It never calls an LLM, never holds platform credentials, never embeds a
   channel.
-- **HTTP is the only required transport.** Receive is `GET /inbox?since=N` with optional
-  long-poll (`&wait=30`). WebSocket/SSE may be added later as an optional accelerator, never
-  the contract.
+- **HTTP is the only required transport.** Receive is exactly ONE wire shape everywhere:
+  `GET /inbox?agent=<name>&since=<cursor>&wait=25&context=<X>`. The `agent` recipient
+  selector is MANDATORY — an unscoped poll is rejected (400); there is no firehose in v1.
+  WebSocket/SSE may be added later as an optional accelerator, never the contract.
+- **Cursors are hub-assigned, per-recipient, monotonic sequence numbers** — NOT file line
+  offsets. Each response carries `next`; the cursor is decoupled from NDJSON layout so
+  rotation/compaction never invalidates it. A cursor older than retained history returns
+  `reset:true` plus the earliest available cursor (client rebases; never a silent skip).
+  Delivery is at-least-once; consumers MUST dedupe by envelope `id`.
 - **No push subscriptions, no consumer HTTP servers.** Every consumer polls with its own
   locally persisted cursor.
 - **No daemon install ceremony.** Any peer that finds no hub on the configured port may start
   one (`/health` returns `{"service":"workwire"}` as the discover-don't-start probe).
 - **Messages carry context at read time.** The hub stores single copies; when delivering a
-  message it attaches `context: [last X messages of the thread]`. Senders never bundle history.
-  `GET /threads/<id>?last=N` serves more on demand.
+  message it attaches `context: [last X messages of the thread]` as a SEPARATE field —
+  context entries are background, never new deliveries: they don't advance the cursor and
+  consumers must not treat them as inbound. Senders never bundle history.
+  Defaults from Spike-02 measurements: `lastMessages = 5`, server-enforced cap `context=20`,
+  long-poll default `wait=25`. `GET /threads/<id>?last=N` serves more on demand.
+- **`reply_to:"last"` is resolved exactly once, at hub ingest, thread-scoped**, and the
+  resolved concrete `id` is persisted in the stored envelope (stable under redelivery).
+  On an empty thread it resolves to none (409). The answer path never uses `"last"`: a
+  listener answering a delivered question MUST stamp that question's envelope `id`.
 - Static settings live in `~/.config/workwire/workwire.json` (`hubUrl`, port, bind
   address, data dir, `lastMessages` context depth, timeouts, auth token env NAME). The file
   is **auto-created with defaults on first run** of any workwire verb — users edit, never

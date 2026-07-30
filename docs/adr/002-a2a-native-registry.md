@@ -12,7 +12,13 @@ loops. The A2A surface needed is small — a card JSON, task send, result poll.
 ## Decision
 
 - The hub implements the **minimal A2A spec natively**: no SDK, no toolnexus dependency.
-  toolnexus (or Google ADK, or curl) interoperates because we implement the spec.
+- **Version pinned: A2A v0.3.0.** The hub serves the real 0.3.0 transport, not just a card:
+  JSON-RPC `message/send` at the card URL (a thin shim over the thread store returning a
+  Task object), alongside our plain `/ask` + `/threads` surface. Spike-03 proved the card
+  validates but ALSO proved a strict SDK client needs `message/send` — so the shim is in
+  scope, and SDK-client interop is claimed only once a real SDK client passes conformance.
+  Migration trigger: adopt A2A 1.0.0 (`interfaces[]` card restructure) as a v2 change when
+  the ecosystem's SDKs default to it.
 - **Dynamic registry, zero config:** peers `POST /agents` an agent card (name, description,
   capabilities/skills, project/cwd hint) at startup and refresh with a heartbeat. Stale agents
   age out. `GET /agents` lists who is on the hub now. Persisted only as a last-seen cache in
