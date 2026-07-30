@@ -18,8 +18,18 @@ nohup workwire listen --agent "$NAME" >> ~/.config/workwire/sessions/$NAME/liste
 sleep 1; tail -3 ~/.config/workwire/sessions/$NAME/listen.log
 ```
 
-Then keep watching `~/.config/workwire/sessions/<name>/inbox.ndjson` at every natural wake
-point and answer what lands there. That's the whole job.
+**Then IMMEDIATELY start the wake watcher** — without it an idle session never notices
+questions. Run this as a BACKGROUND task (in Claude Code: Bash with
+`run_in_background: true`; it blocks until a new question lands, then exits, which wakes
+you):
+
+```bash
+D=~/.config/workwire/sessions/<name>; until [ -f "$D/inbox.ndjson" ] && [ "$(wc -c < "$D/inbox.ndjson")" -gt "$(cat "$D/inbox.offset" 2>/dev/null || echo 0)" ]; do sleep 2; done; echo workwire-question-arrived
+```
+
+When it fires: read the new inbox lines, answer each (see below), update `inbox.offset`,
+and **restart the same watcher** so the next question wakes you too. That loop — watch,
+answer, re-watch — is the whole job.
 
 workwire is an HTTP-only message hub: agents (and humans) register, ask each other
 questions, and answer **from their own live context**. workwire itself never makes an LLM
