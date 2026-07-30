@@ -1,0 +1,24 @@
+{
+    "messages": [
+        {
+            "id": "m-1-1785382740215045000",
+            "from": "repoB",
+            "to": "repoA",
+            "thread_id": "t-m-1-1785382740215045000",
+            "text": "where does the auth module live and does it use JWT?",
+            "ts": "2026-07-30T03:39:00.215047Z",
+            "kind": "question"
+        },
+        {
+            "id": "m-2-1785382740311040000",
+            "from": "repoA",
+            "to": "repoB",
+            "thread_id": "t-m-1-1785382740215045000",
+            "reply_to": "m-1-1785382740215045000",
+            "text": "From my session context: The auth module lives in internal/auth and uses session cookies, not JWT. (thread had 0 prior msgs)",
+            "ts": "2026-07-30T03:39:00.311042Z",
+            "kind": "answer"
+        }
+    ],
+    "thread_id": "t-m-1-1785382740215045000"
+}

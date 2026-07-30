@@ -1,0 +1,2 @@
+responder: agent=repoA tailing state/sessions/repoA/inbox.ndjson from offset 0
+session repoA answering m-1-1785382740215045000 on thread t-m-1-1785382740215045000

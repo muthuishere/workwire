@@ -1,0 +1,6 @@
+asked repoA on thread t-m-1-1785382740215045000, waiting...
+ANSWER (0.30s): From my session context: The auth module lives in internal/auth and uses session cookies, not JWT. (thread had 0 prior msgs)
+
+real	0m0.312s
+user	0m0.004s
+sys	0m0.004s

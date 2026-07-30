@@ -1,0 +1,3 @@
+listen: agent=fifoAgent mech=fifo since=0
+deliver seq=3 id=m-3-1785382740847313000 via fifo
+FIFO delivery failed: no reader on fifo (session not waiting): device not configured

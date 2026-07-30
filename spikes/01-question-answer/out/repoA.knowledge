@@ -1,0 +1,3 @@
+The deploy pipeline uses Taskfile with task deploy:prod which rsyncs to prod-app-1.
+The auth module lives in internal/auth and uses session cookies, not JWT.
+Database migrations run via task migrate using golang-migrate.

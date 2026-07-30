@@ -1,0 +1,4 @@
+reaping stale lock for pid 78402
+listen: agent=repoA mech=file since=1
+deliver seq=4 id=m-4-1785382745181309000 via file
+poll error (hub down?), retrying: Get "http://127.0.0.1:14411/inbox?agent=repoA&since=4&wait=25": dial tcp 127.0.0.1:14411: connect: connection refused

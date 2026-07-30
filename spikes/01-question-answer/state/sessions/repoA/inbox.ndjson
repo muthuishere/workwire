@@ -1,0 +1,2 @@
+{"seq":1,"envelope":{"id":"m-1-1785382740215045000","from":"repoB","to":"repoA","thread_id":"t-m-1-1785382740215045000","text":"where does the auth module live and does it use JWT?","ts":"2026-07-30T03:39:00.215047Z","kind":"question"},"context":null}
+{"seq":4,"envelope":{"id":"m-4-1785382745181309000","from":"repoB","to":"repoA","thread_id":"t-m-4-1785382745181309000","text":"how do database migrations run?","ts":"2026-07-30T03:39:05.181311Z","kind":"question"},"context":null}

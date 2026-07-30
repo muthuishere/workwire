@@ -1,0 +1,2 @@
+listen: agent=cbAgent mech=cmd since=0
+deliver seq=7 id=m-7-1785382763833841000 via cmd
