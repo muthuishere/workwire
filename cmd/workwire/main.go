@@ -46,9 +46,12 @@ func main() {
 		err = cmdAsk(cfg, args)
 	case "status":
 		err = cmdStatus(cfg)
-	case "listen", "install":
-		fmt.Fprintf(os.Stderr, "workwire %s: not yet implemented\n", verb)
-		os.Exit(1)
+	case "listen":
+		err = cmdListen(cfg, args)
+	case "answer":
+		err = cmdAnswer(cfg, args)
+	case "install":
+		err = cmdInstall(cfg, args)
 	case "help", "-h", "--help":
 		usage()
 	default:
@@ -71,8 +74,9 @@ Usage:
   workwire peers                          list live agents + contacts
   workwire ask <agent> <question>         ask an agent and wait for the answer
   workwire status                         probe the hub /health
-  workwire listen                         (not yet implemented)
-  workwire install --skills               (not yet implemented)
+  workwire listen --agent <name>          singleton listener: deliver inbound questions to the session inbox file
+  workwire answer <id> <text>             answer a delivered question by its concrete envelope id
+  workwire install --skills               install the two-way agent skill (~/.claude/skills/workwire)
 
 Config: ~/.config/workwire/workwire.json (auto-created); WORKWIRE_* env overrides every key.
 `)
