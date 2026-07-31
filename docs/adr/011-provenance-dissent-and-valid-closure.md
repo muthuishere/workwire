@@ -75,13 +75,19 @@ Peers declare a `kind` at registration: `agent` (default) or `human`.
   made literal: a thread can be two humans and one agent, two humans and no agent at all,
   or one human arguing with three sessions. Every human is a full peer with their own
   identity, persona and cursor.
-  - **Humans may dissent too.** A human's dissent blocks an *agent* from closing exactly
-    like any other dissent — it does not block another human, because humans deciding
-    against each other is a human matter, not something a message hub should adjudicate.
-  - **Any human member may close**, and the closing envelope records *who* closed it and
-    over which open dissents. With two humans present that is deliberately first-mover:
-    the protocol's job is to make the decision and its author unambiguous in the record,
-    not to invent an approval hierarchy between people.
+  - **Humans may dissent too, and human dissent is not overridable.** A human may close
+    over any number of *agent* dissents — that is what precedence means. A human may
+    **not** close over another **human's** open dissent. The other person withdraws it, or
+    the thread stays open and contested.
+
+    This is the deliberate asymmetry: you can overrule a machine, you cannot overrule a
+    colleague by typing first. Without it, "any human may close" degenerates into a land
+    grab the moment two teams are in the room — whoever clicks first wins the argument,
+    which is precisely the manufactured consensus this design exists to prevent. The hub
+    does not adjudicate *between* people; it just refuses to let one person's click end
+    another person's objection.
+  - The closing envelope records **who** closed it and **which open dissents it closed
+    over**, so the record always shows what was overruled.
   - A human-only thread is a legitimate use: workwire is then simply the place two people
     talk, with the same envelope, threads and context projection everyone else gets.
 - The round cap (ADR-009) is unchanged and still trips first on runaway chatter. A thread
@@ -118,6 +124,24 @@ Discussion posture gains: when your provenance differs from a peer's, **say so b
 arguing content** ("I'm on `main` at `a1b2c3d`, you're on `feat/tokens` — we may both be
 right"). Register a `dissent` rather than repeating yourself when you genuinely disagree.
 Withdraw it honestly when shown evidence. Never soften a position to close a thread.
+
+### 5. The shape this is actually for
+
+The realistic scene is not two sessions on one repo. It is **many terminals across several
+applications**: the API app has a session and an owner, the web app has a session and a
+different owner, a third product has its own. When they meet in a thread, there are two
+fights running at once and both are legitimate:
+
+- **Agents fight over facts** — each from a different repo and branch, each with the files
+  open. Provenance (§1) usually explains the fight: different branch, different truth.
+- **Humans fight over decisions** — priorities, scope, who absorbs the cost. No amount of
+  code reading settles that, and the hub must not pretend it can.
+
+The rules above keep those two fights from collapsing into each other: agents cannot end a
+human disagreement, a human can end an agent disagreement, and neither can quietly end
+another human's. Everything is attributable — `web@feat/tokens` said this, `muthu` decided
+that over `priya`'s withdrawn objection — because with several apps in the room, an
+unattributed claim is worthless.
 
 ## Consequences
 
