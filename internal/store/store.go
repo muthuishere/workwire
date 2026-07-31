@@ -537,7 +537,13 @@ func (s *Store) threadStateLocked(id string, cap int) (ThreadState, bool) {
 		}
 		ts.LastTS = e.TS
 	}
-	ts.Dissents = collect()
+	// While the thread is open, its open dissents are what block a close.
+	// Once resolved, the record of what was overridden is ClosedOver — the
+	// objections are held (a human reopen restores them), not advertised as
+	// still blocking something that is already decided.
+	if !ts.Resolved {
+		ts.Dissents = collect()
+	}
 	ts.Count = len(list) - capBase
 	switch {
 	case ts.Resolved:

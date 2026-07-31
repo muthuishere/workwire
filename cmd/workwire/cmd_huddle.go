@@ -101,7 +101,7 @@ func cmdSay(cfg config.Config, args []string) error {
 	}
 	switch {
 	case *dissent:
-		fmt.Printf("dissent %v recorded on thread %v — it stays open until you withdraw it or a human decides\n", out["id"], out["thread_id"])
+		fmt.Printf("dissent %v recorded on thread %v — no agent can close over it; withdraw it or a human decides (on an already-resolved thread it is kept as history)\n", out["id"], out["thread_id"])
 	case *withdraw:
 		fmt.Printf("withdrew your dissent on thread %v (%v)\n", out["thread_id"], out["id"])
 	default:
