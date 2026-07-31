@@ -17,7 +17,24 @@ import (
 	"time"
 
 	"github.com/muthuishere/workwire/internal/envelope"
+	"github.com/muthuishere/workwire/internal/origin"
 )
+
+// Peer kinds (ADR-011 §3). A peer declares one at registration; the default
+// is an agent. Precedence at closure is decided by this field.
+const (
+	KindAgent = "agent"
+	KindHuman = "human"
+)
+
+// NormalizeKind maps anything unrecognised to "agent" — the safe default:
+// nobody gets human precedence by typo.
+func NormalizeKind(k string) string {
+	if k == KindHuman {
+		return KindHuman
+	}
+	return KindAgent
+}
 
 // Skill is one entry of a card's skills[].
 type Skill struct {
@@ -57,32 +74,42 @@ func (p *AskPolicy) UnmarshalJSON(b []byte) error {
 
 // Card is the registration body (registry-a2a R1).
 type Card struct {
-	Name         string     `json:"name"`
-	Description  string     `json:"description,omitempty"`
-	Capabilities []string   `json:"capabilities,omitempty"`
-	Skills       []Skill    `json:"skills,omitempty"`
-	Project      string     `json:"project,omitempty"`
+	Name         string   `json:"name"`
+	Description  string   `json:"description,omitempty"`
+	Capabilities []string `json:"capabilities,omitempty"`
+	Skills       []Skill  `json:"skills,omitempty"`
+	Project      string   `json:"project,omitempty"`
 	// Persona is a short self-description derived by the skill from the
 	// session's own CLAUDE.md / AGENTS.md and cwd: who this worker is, what
 	// it owns, what it will not speak for (ADR-009). The hub neither invents
 	// nor validates it.
 	Persona   string     `json:"persona,omitempty"`
 	AskPolicy *AskPolicy `json:"askPolicy,omitempty"`
+	// Kind is "agent" (default) or "human" (ADR-011 §3).
+	Kind string `json:"kind,omitempty"`
+	// Origin is auto-derived provenance: which tree is talking (ADR-011 §1).
+	// Sent at registration and refreshed on every heartbeat re-registration.
+	Origin *origin.Info `json:"origin,omitempty"`
 }
 
 // Agent is a registered identity. SecretHash only — never the secret value.
 type Agent struct {
-	Name         string     `json:"name"`
-	AgentID      string     `json:"agentId"`
-	SecretHash   string     `json:"secretHash"`
-	Description  string     `json:"description,omitempty"`
-	Capabilities []string   `json:"capabilities,omitempty"`
-	Skills       []Skill    `json:"skills,omitempty"`
-	Project      string     `json:"project,omitempty"`
-	Persona      string     `json:"persona,omitempty"`
-	AskPolicy    *AskPolicy `json:"askPolicy,omitempty"`
-	LastSeen     time.Time  `json:"lastSeen"`
+	Name         string       `json:"name"`
+	AgentID      string       `json:"agentId"`
+	SecretHash   string       `json:"secretHash"`
+	Description  string       `json:"description,omitempty"`
+	Capabilities []string     `json:"capabilities,omitempty"`
+	Skills       []Skill      `json:"skills,omitempty"`
+	Project      string       `json:"project,omitempty"`
+	Persona      string       `json:"persona,omitempty"`
+	AskPolicy    *AskPolicy   `json:"askPolicy,omitempty"`
+	Kind         string       `json:"kind,omitempty"`
+	Origin       *origin.Info `json:"origin,omitempty"`
+	LastSeen     time.Time    `json:"lastSeen"`
 }
+
+// IsHuman reports whether this peer registered as a person (ADR-011 §3).
+func (a *Agent) IsHuman() bool { return a != nil && a.Kind == KindHuman }
 
 // Lease is a hub-side listen lease (registry-a2a R10). In-memory only: after
 // a hub restart the first acquire wins, which is safe (at most one listener).
@@ -185,6 +212,10 @@ func (r *Registry) Register(card Card, presentedSecret string) RegisterResult {
 		existing.Project = card.Project
 		existing.Persona = card.Persona
 		existing.AskPolicy = card.AskPolicy
+		existing.Kind = NormalizeKind(card.Kind)
+		if card.Origin != nil {
+			existing.Origin = card.Origin
+		}
 		existing.LastSeen = r.now()
 		r.persistLocked()
 		return RegisterResult{Updated: true, Agent: existing}
@@ -200,6 +231,8 @@ func (r *Registry) Register(card Card, presentedSecret string) RegisterResult {
 		Project:      card.Project,
 		Persona:      card.Persona,
 		AskPolicy:    card.AskPolicy,
+		Kind:         NormalizeKind(card.Kind),
+		Origin:       card.Origin,
 		LastSeen:     r.now(),
 	}
 	r.agents[card.Name] = a

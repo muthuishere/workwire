@@ -6,7 +6,6 @@ package server
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/muthuishere/workwire/internal/config"
 	"github.com/muthuishere/workwire/internal/contacts"
 	"github.com/muthuishere/workwire/internal/envelope"
+	"github.com/muthuishere/workwire/internal/origin"
 	"github.com/muthuishere/workwire/internal/registry"
 	"github.com/muthuishere/workwire/internal/store"
 )
@@ -167,22 +167,10 @@ func (s *Server) ingest(id auth.Identity, req sendRequest) (*envelope.Envelope, 
 	// a send carrying only thread_id goes to every current member but the
 	// sender, and sending into a thread joins you to it.
 	to := req.To
+	var closedOver []store.Dissent
 	if ts, exists := s.store.ThreadState(threadID, s.cfg.MaxThreadMessages); exists {
-		// Only the initiator decides (ADR-009); a participant recommends
-		// with kind:"proposal", which never closes the thread.
-		if req.Kind == "resolved" && ts.Initiator != "" && ts.Initiator != from {
-			return nil, http.StatusForbidden, fmt.Sprintf(
-				"only the initiator of thread %s (%s) may send kind \"resolved\" — send kind \"proposal\" to recommend a resolution instead",
-				threadID, ts.Initiator)
-		}
-		if ts.Resolved {
-			return nil, http.StatusConflict, fmt.Sprintf(
-				"thread %s is resolved: it was closed with kind \"resolved\" and cannot be reopened — start a new thread", threadID)
-		}
-		if s.cfg.MaxThreadMessages > 0 && ts.Count >= s.cfg.MaxThreadMessages {
-			return nil, http.StatusConflict, fmt.Sprintf(
-				"thread %s is stalled: it reached the per-thread cap of %d messages and is handed back to its initiator (%s) with the disagreement intact — raise maxThreadMessages in workwire.json (or WORKWIRE_MAX_THREAD_MESSAGES) to allow more rounds",
-				threadID, s.cfg.MaxThreadMessages, ts.Initiator)
+		if status, msg := s.checkThreadRules(id, ts, req, &closedOver); msg != "" {
+			return nil, status, msg
 		}
 		if len(to) == 0 {
 			for _, m := range ts.Members {
@@ -209,6 +197,22 @@ func (s *Server) ingest(id auth.Identity, req sendRequest) (*envelope.Envelope, 
 		meta = map[string]any{}
 	}
 	meta["peerKind"] = id.PeerKind() // authenticated provenance (auth R9)
+	meta["peerRole"] = id.Role()     // "human" | "agent" precedence (ADR-011 §3)
+	if o := id.Origin().Map(); o != nil {
+		meta["origin"] = o // which tree said it (ADR-011 §1)
+	}
+	if req.Kind == "resolved" {
+		// The closing envelope records who closed it and which open dissents
+		// the closure overrode (ADR-011 §3).
+		meta["closedBy"] = from
+		if len(closedOver) > 0 {
+			names := make([]string, 0, len(closedOver))
+			for _, d := range closedOver {
+				names = append(names, d.Peer)
+			}
+			meta["closedOver"] = names
+		}
+	}
 	env := &envelope.Envelope{
 		ID:          envelope.NewID("m"),
 		From:        from,
@@ -241,6 +245,12 @@ type delivered struct {
 type contextEntry struct {
 	envelope.Envelope
 	Persona string `json:"persona,omitempty"`
+	// Origin is the speaker's provenance — which tree the claim came from
+	// (ADR-011 §1). Taken from what the speaker stamped at send time, so
+	// history stays true after they switch branches.
+	Origin *origin.Info `json:"origin,omitempty"`
+	// Kind is "agent" or "human": who is talking, not just from where.
+	Kind_ string `json:"peer_kind,omitempty"`
 }
 
 // GET /inbox?agent=&since=&wait=&context= — the single receive shape
@@ -331,6 +341,16 @@ func (s *Server) projectContext(threadID string, n int) []contextEntry {
 		entry := contextEntry{Envelope: e}
 		if a, ok := s.registry.Get(e.From); ok {
 			entry.Persona = a.Persona
+			entry.Kind_ = registry.NormalizeKind(a.Kind)
+			entry.Origin = a.Origin
+		}
+		if m, ok := e.Meta["origin"].(map[string]any); ok {
+			if oi := origin.FromMap(m); oi != nil {
+				entry.Origin = oi
+			}
+		}
+		if r, ok := e.Meta["peerRole"].(string); ok && r != "" {
+			entry.Kind_ = r
 		}
 		out = append(out, entry)
 	}

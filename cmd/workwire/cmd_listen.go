@@ -13,6 +13,7 @@ import (
 	"github.com/muthuishere/workwire/internal/auth"
 	"github.com/muthuishere/workwire/internal/config"
 	"github.com/muthuishere/workwire/internal/listen"
+	persona_ "github.com/muthuishere/workwire/internal/persona"
 )
 
 // cmdListen runs the singleton dumb waiter (ADR-003, agent-skill R4/R5):
@@ -28,6 +29,11 @@ func cmdListen(cfg config.Config, args []string) error {
 	fs.Parse(args)
 	if *agent == "" {
 		return fmt.Errorf("listen requires --agent <name>")
+	}
+	// Persona comes from this directory's own AGENTS.md / CLAUDE.md unless
+	// the caller overrode it — one capped line, never the whole file.
+	if *persona == "" {
+		*persona = persona_.Derive("")
 	}
 	if cfg.ConfigDir == "" {
 		return fmt.Errorf("no config dir resolvable; set WORKWIRE_CONFIG_DIR")

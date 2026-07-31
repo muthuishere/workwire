@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/muthuishere/workwire/internal/envelope"
+	"github.com/muthuishere/workwire/internal/origin"
 )
 
 // Options tune rotation and retention.
@@ -358,21 +359,97 @@ func (s *Store) Inbox(agent string, since int64) (msgs []*Stored, next int64, re
 	return msgs, next, false
 }
 
+// Dissent is one participant's objection on a thread (ADR-011 §2): who
+// objected, whether they are a human or an agent, what they said, and the
+// provenance they said it from.
+type Dissent struct {
+	Peer   string       `json:"peer"`
+	Kind   string       `json:"kind,omitempty"` // "agent" | "human"
+	Text   string       `json:"text,omitempty"`
+	TS     string       `json:"ts,omitempty"`
+	Origin *origin.Info `json:"origin,omitempty"`
+}
+
+// IsHuman reports whether the dissenter is a person — human dissent is not
+// overridable by anybody but that person (ADR-011 §3).
+func (d Dissent) IsHuman() bool { return d.Kind == "human" }
+
 // ThreadState is the live view of a discussion (ADR-009): membership accrued
-// from participation, message count, and convergence state.
+// from participation, message count, convergence state, and the open dissents
+// that decide whether a close is valid (ADR-011).
 type ThreadState struct {
 	ThreadID string `json:"thread_id"`
 	// Initiator opened the thread and is the only member who may resolve it
 	// (ADR-009): participants surface perspectives, the initiator decides.
 	Initiator string   `json:"initiator"`
 	Members   []string `json:"members"`
-	Count    int      `json:"count"`
-	State    string   `json:"state"` // "open" | "resolved" | "stalled"
-	Resolved bool     `json:"-"`
-	LastTS   string   `json:"last_ts,omitempty"`
+	Count     int      `json:"count"`
+	State     string   `json:"state"` // "open" | "resolved" | "stalled"
+	Resolved  bool     `json:"-"`
+	LastTS    string   `json:"last_ts,omitempty"`
+	// Dissents are the OPEN objections right now, in the order they were
+	// first raised. An agent initiator may not close while any is open.
+	Dissents []Dissent `json:"dissents,omitempty"`
+	// ClosedBy / ClosedOver record who closed the thread and which open
+	// dissents that closure overrode, so the record shows what was overruled.
+	ClosedBy     string    `json:"closed_by,omitempty"`
+	ClosedByKind string    `json:"closed_by_kind,omitempty"`
+	ClosedOver   []Dissent `json:"closed_over,omitempty"`
+	// Reopened is true when a human reopened the thread after a close or a
+	// stall (ADR-011 §3a).
+	Reopened bool `json:"reopened,omitempty"`
 }
 
-// threadStateLocked derives membership and state from the persisted
+// OpenDissentsBy returns the open dissents raised by peers other than `peer`.
+func (t ThreadState) OpenDissentsBy(exclude string) []Dissent {
+	out := make([]Dissent, 0, len(t.Dissents))
+	for _, d := range t.Dissents {
+		if d.Peer != exclude {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// OpenHumanDissents returns the open dissents raised by humans other than
+// `exclude` — the only dissents a human close cannot override.
+func (t ThreadState) OpenHumanDissents(exclude string) []Dissent {
+	out := make([]Dissent, 0, len(t.Dissents))
+	for _, d := range t.Dissents {
+		if d.IsHuman() && d.Peer != exclude {
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// roleOf reads the peer kind the hub stamped on an envelope at ingest.
+func roleOf(e *envelope.Envelope) string {
+	if e.Meta == nil {
+		return "agent"
+	}
+	if s, ok := e.Meta["peerRole"].(string); ok && s == "human" {
+		return "human"
+	}
+	return "agent"
+}
+
+// originOf reads the provenance the hub stamped on an envelope at ingest.
+func originOf(e *envelope.Envelope) *origin.Info {
+	if e.Meta == nil {
+		return nil
+	}
+	m, _ := e.Meta["origin"].(map[string]any)
+	if m == nil {
+		if oi, ok := e.Meta["origin"].(*origin.Info); ok {
+			return oi
+		}
+		return nil
+	}
+	return origin.FromMap(m)
+}
+
+// threadStateLocked derives membership, dissent and state from the persisted
 // envelopes themselves — nothing extra to keep in sync, and it survives
 // restart because the segments do.
 func (s *Store) threadStateLocked(id string, cap int) (ThreadState, bool) {
@@ -380,7 +457,7 @@ func (s *Store) threadStateLocked(id string, cap int) (ThreadState, bool) {
 	if !ok {
 		return ThreadState{}, false
 	}
-	ts := ThreadState{ThreadID: id, Count: len(list), State: "open"}
+	ts := ThreadState{ThreadID: id, State: "open"}
 	seen := map[string]bool{}
 	add := func(n string) {
 		if n == "" || seen[n] {
@@ -389,19 +466,65 @@ func (s *Store) threadStateLocked(id string, cap int) (ThreadState, bool) {
 		seen[n] = true
 		ts.Members = append(ts.Members, n)
 	}
+	open := map[string]Dissent{}
+	var order []string
+	collect := func() []Dissent {
+		out := make([]Dissent, 0, len(open))
+		for _, name := range order {
+			if d, ok := open[name]; ok {
+				out = append(out, d)
+			}
+		}
+		return out
+	}
+	capBase := 0
 	if len(list) > 0 {
 		ts.Initiator = list[0].Env.From
 	}
-	for _, st := range list {
-		add(st.Env.From)
-		for _, to := range st.Env.To {
+	for idx, st := range list {
+		e := st.Env
+		add(e.From)
+		for _, to := range e.To {
 			add(to)
 		}
-		if st.Env.Kind == "resolved" {
+		switch e.Kind {
+		case "dissent":
+			// A dissent on a resolved thread is history, not a reopen
+			// (ADR-011 §3a): the decision ends, the disagreement does not.
+			if !ts.Resolved {
+				if _, had := open[e.From]; !had {
+					order = append(order, e.From)
+				}
+				open[e.From] = Dissent{
+					Peer: e.From, Kind: roleOf(e), Text: e.Text, TS: e.TS, Origin: originOf(e),
+				}
+			}
+		case "withdraw":
+			// Clears only the sender's own dissent.
+			if !ts.Resolved {
+				delete(open, e.From)
+			}
+		case "resolved":
 			ts.Resolved = true
+			ts.ClosedBy = e.From
+			ts.ClosedByKind = roleOf(e)
+			// What the closure overrode: every dissent open at that moment
+			// except the closer's own (you do not override yourself).
+			for _, d := range collect() {
+				if d.Peer != e.From {
+					ts.ClosedOver = append(ts.ClosedOver, d)
+				}
+			}
+		case "reopen":
+			ts.Resolved = false
+			ts.ClosedBy, ts.ClosedByKind, ts.ClosedOver = "", "", nil
+			ts.Reopened = true
+			capBase = idx + 1 // the round cap starts over from the reopen
 		}
-		ts.LastTS = st.Env.TS
+		ts.LastTS = e.TS
 	}
+	ts.Dissents = collect()
+	ts.Count = len(list) - capBase
 	switch {
 	case ts.Resolved:
 		ts.State = "resolved"

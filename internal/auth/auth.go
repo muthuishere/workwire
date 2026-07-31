@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/muthuishere/workwire/internal/origin"
 	"github.com/muthuishere/workwire/internal/registry"
 )
 
@@ -86,6 +87,27 @@ func (id Identity) PeerKind() string {
 	default:
 		return "external"
 	}
+}
+
+// Role is the peer kind that decides precedence at closure (ADR-011 §3):
+// "human" or "agent". Only a peer that registered as a human is a human;
+// the admin token is an operator credential, not a registered person.
+func (id Identity) Role() string {
+	if id.Kind == KindAgent && id.Agent.IsHuman() {
+		return registry.KindHuman
+	}
+	return registry.KindAgent
+}
+
+// IsHuman reports human precedence.
+func (id Identity) IsHuman() bool { return id.Role() == registry.KindHuman }
+
+// Origin is the peer's registered provenance, if any (ADR-011 §1).
+func (id Identity) Origin() *origin.Info {
+	if id.Kind == KindAgent {
+		return id.Agent.Origin
+	}
+	return nil
 }
 
 // ErrUnauthorized maps to 401 {"error":"unauthorized"}.

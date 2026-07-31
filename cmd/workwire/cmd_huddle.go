@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/muthuishere/workwire/internal/config"
+	"github.com/muthuishere/workwire/internal/origin"
 )
 
 // clientAs builds a hub client, optionally acting as a registered agent.
@@ -70,6 +71,8 @@ func cmdSay(cfg config.Config, args []string) error {
 	fs := flag.NewFlagSet("say", flag.ExitOnError)
 	as := fs.String("as", "", "act as a registered agent")
 	proposal := fs.Bool("proposal", false, "send as kind \"proposal\" — a recommendation, not a verdict")
+	dissent := fs.Bool("dissent", false, "register an OPEN objection: an agent initiator may not close over it")
+	withdraw := fs.Bool("withdraw", false, "withdraw your own dissent (yours only)")
 	rest, err := parseInterspersed(fs, args)
 	if err != nil {
 		return err
@@ -82,14 +85,54 @@ func cmdSay(cfg config.Config, args []string) error {
 		return err
 	}
 	body := map[string]any{"thread_id": rest[0], "text": strings.Join(rest[1:], " ")}
-	if *proposal {
+	switch {
+	case *dissent && *withdraw:
+		return fmt.Errorf("--dissent and --withdraw are opposites; pick one")
+	case *dissent:
+		body["kind"] = "dissent"
+	case *withdraw:
+		body["kind"] = "withdraw"
+	case *proposal:
 		body["kind"] = "proposal"
 	}
 	out, err := postSend(c, body)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("said %v on thread %v\n", out["id"], out["thread_id"])
+	switch {
+	case *dissent:
+		fmt.Printf("dissent %v recorded on thread %v — it stays open until you withdraw it or a human decides\n", out["id"], out["thread_id"])
+	case *withdraw:
+		fmt.Printf("withdrew your dissent on thread %v (%v)\n", out["thread_id"], out["id"])
+	default:
+		fmt.Printf("said %v on thread %v\n", out["id"], out["thread_id"])
+	}
+	return nil
+}
+
+// cmdReopen reopens a resolved-by-agent or stalled thread. Humans only: a
+// human ruling is final and agents may not reopen anything (ADR-011 §3a).
+func cmdReopen(cfg config.Config, args []string) error {
+	fs := flag.NewFlagSet("reopen", flag.ExitOnError)
+	as := fs.String("as", "", "act as a registered peer")
+	rest, err := parseInterspersed(fs, args)
+	if err != nil {
+		return err
+	}
+	if len(rest) < 2 {
+		return fmt.Errorf("usage: workwire reopen <thread> \"<reason>\"")
+	}
+	c, err := clientAs(cfg, *as)
+	if err != nil {
+		return err
+	}
+	out, err := postSend(c, map[string]any{
+		"thread_id": rest[0], "text": strings.Join(rest[1:], " "), "kind": "reopen",
+	})
+	if err != nil {
+		return err
+	}
+	fmt.Printf("reopened thread %v (%v)\n", out["thread_id"], out["id"])
 	return nil
 }
 
@@ -138,6 +181,20 @@ func cmdThreads(cfg config.Config, args []string) error {
 			Members   []string `json:"members"`
 			Count     int      `json:"count"`
 			State     string   `json:"state"`
+			Dissents  []struct {
+				Peer   string `json:"peer"`
+				Kind   string `json:"kind"`
+				Origin struct {
+					Repo   string `json:"repo"`
+					Branch string `json:"branch"`
+					Commit string `json:"commit"`
+					Dirty  bool   `json:"dirty"`
+				} `json:"origin"`
+			} `json:"dissents"`
+			ClosedBy   string `json:"closed_by"`
+			ClosedOver []struct {
+				Peer string `json:"peer"`
+			} `json:"closed_over"`
 		} `json:"threads"`
 		Max int `json:"maxThreadMessages"`
 	}
@@ -157,7 +214,28 @@ func cmdThreads(cfg config.Config, args []string) error {
 		return nil
 	}
 	for _, t := range out.Threads {
-		fmt.Printf("%-22s %-9s %2d/%d  %s\n", t.ThreadID, t.State, t.Count, out.Max, strings.Join(t.Members, ", "))
+		// A contested thread must LOOK contested: dissent count and who.
+		flag := ""
+		if n := len(t.Dissents); n > 0 {
+			var who []string
+			for _, d := range t.Dissents {
+				prov := (&origin.Info{Repo: d.Origin.Repo, Branch: d.Origin.Branch, Commit: d.Origin.Commit, Dirty: d.Origin.Dirty}).String()
+				if prov != "" {
+					who = append(who, fmt.Sprintf("%s[%s %s]", d.Peer, d.Kind, prov))
+				} else {
+					who = append(who, fmt.Sprintf("%s[%s]", d.Peer, d.Kind))
+				}
+			}
+			flag = fmt.Sprintf("  dissent:%d %s", n, strings.Join(who, ","))
+		}
+		if t.ClosedBy != "" && len(t.ClosedOver) > 0 {
+			var over []string
+			for _, d := range t.ClosedOver {
+				over = append(over, d.Peer)
+			}
+			flag += fmt.Sprintf("  closed by %s over %s", t.ClosedBy, strings.Join(over, ","))
+		}
+		fmt.Printf("%-22s %-9s %2d/%d  %s%s\n", t.ThreadID, t.State, t.Count, out.Max, strings.Join(t.Members, ", "), flag)
 	}
 	return nil
 }

@@ -15,6 +15,9 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/muthuishere/workwire/internal/origin"
+	"github.com/muthuishere/workwire/internal/registry"
 )
 
 // Options wires a Runner. ConfigDir holds credentials.json and the
@@ -30,8 +33,12 @@ type Options struct {
 	// the skill from the repo's own CLAUDE.md / AGENTS.md; sent at
 	// registration so peers know which vantage point is talking.
 	Persona string
-	Heartbeat  time.Duration
-	InboxPath  string // override; default <ConfigDir>/sessions/<agent>/inbox.ndjson
+	// Kind is "agent" (default) or "human" (ADR-011 §3).
+	Kind string
+	// OriginDir is the working tree provenance is derived from (default cwd).
+	OriginDir string
+	Heartbeat time.Duration
+	InboxPath string // override; default <ConfigDir>/sessions/<agent>/inbox.ndjson
 	// RotateMaxBytes rotates (truncates) the inbox file once it exceeds this
 	// size AND the consumer's persisted offset says it is fully consumed.
 	RotateMaxBytes int64
@@ -238,17 +245,41 @@ func (r *Runner) EnsureRegistered() error {
 	return fmt.Errorf("could not register: every suggested name was taken")
 }
 
+// card is the registration body. Provenance is re-derived every time it is
+// built, so the heartbeat re-registration picks up a branch switch made
+// mid-session (ADR-011 §1).
 func (r *Runner) card(name string) map[string]any {
-	cwd, _ := os.Getwd()
+	dir := r.opts.OriginDir
+	if dir == "" {
+		dir, _ = os.Getwd()
+	}
 	card := map[string]any{
 		"name":         name,
-		"project":      cwd,
+		"project":      dir,
 		"capabilities": []string{"ask"},
+		"kind":         registry.NormalizeKind(r.opts.Kind),
+		"origin":       origin.Detect(dir),
 	}
 	if r.opts.Persona != "" {
 		card["persona"] = r.opts.Persona
 	}
 	return card
+}
+
+// Heartbeat re-registers the current card, refreshing provenance on the hub.
+// A failure is not fatal: the listener keeps listening with stale provenance.
+func (r *Runner) Heartbeat() error {
+	if r.secret == "" {
+		return nil
+	}
+	code, err := r.do("POST", "/agents", r.secret, r.card(r.agentName), nil)
+	if err != nil {
+		return err
+	}
+	if code != 200 && code != 201 {
+		return fmt.Errorf("heartbeat re-register failed (%d)", code)
+	}
+	return nil
 }
 
 // AcquireLease takes (or renews) the hub-side listen lease — the
@@ -403,6 +434,11 @@ func (r *Runner) Run(stop <-chan struct{}) error {
 		case <-renew.C:
 			if err := r.AcquireLease(); err != nil {
 				return fmt.Errorf("lease lost: %w", err)
+			}
+			// Provenance is refreshed on every heartbeat: people switch
+			// branches mid-session (ADR-011 §1).
+			if err := r.Heartbeat(); err != nil {
+				r.opts.Logf("provenance refresh failed: %v", err)
 			}
 		default:
 		}

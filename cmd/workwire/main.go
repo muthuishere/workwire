@@ -19,6 +19,7 @@ import (
 	"github.com/muthuishere/workwire/internal/auth"
 	"github.com/muthuishere/workwire/internal/config"
 	"github.com/muthuishere/workwire/internal/contacts"
+	"github.com/muthuishere/workwire/internal/origin"
 	"github.com/muthuishere/workwire/internal/registry"
 	"github.com/muthuishere/workwire/internal/server"
 	"github.com/muthuishere/workwire/internal/store"
@@ -53,6 +54,10 @@ func main() {
 		err = cmdSay(cfg, args)
 	case "resolve":
 		err = cmdResolve(cfg, args)
+	case "join":
+		err = cmdJoin(cfg, args)
+	case "reopen":
+		err = cmdReopen(cfg, args)
 	case "threads":
 		err = cmdThreads(cfg, args)
 	case "listen":
@@ -86,9 +91,11 @@ Usage:
   workwire ask <agent> <question>         ask an agent and wait for the answer
   workwire status                         probe the hub /health
   workwire huddle <name...> "<topic>"     open a discussion with several members; prints the thread id
-  workwire say <thread> "<text>"          contribute to a discussion (--proposal to recommend a resolution)
-  workwire resolve <thread> "<summary>"   close a discussion you opened (initiator only)
-  workwire threads                        list live discussions: id, state, count, members
+  workwire say <thread> "<text>"          contribute (--proposal to recommend, --dissent to object, --withdraw to drop yours)
+  workwire resolve <thread> "<summary>"   close a discussion (agent initiator: only with zero open dissents; a human peer may override agent dissent)
+  workwire threads                        list live discussions: id, state, count, dissent, members
+  workwire join <name> [--human]          register a peer (person or agent) WITHOUT starting a listener
+  workwire reopen <thread> "<reason>"     reopen a resolved or stalled thread (humans only)
   workwire listen --agent <name>          singleton listener: deliver inbound questions to the session inbox file
   workwire answer <id> <text>             answer a delivered question by its concrete envelope id
   workwire install --service --skills     one-line setup: hub as a background service + the agent skill
@@ -361,7 +368,16 @@ func cmdPeers(cfg config.Config) error {
 		if strings.TrimSpace(about) == "" {
 			about = fmt.Sprint(a["description"])
 		}
-		fmt.Printf("agent    %-24v %v\n", a["name"], about)
+		kind, _ := a["kind"].(string)
+		if kind == "" {
+			kind = "agent"
+		}
+		// Provenance sits next to the name: which tree is talking (ADR-011).
+		prov := ""
+		if m, ok := a["origin"].(map[string]any); ok {
+			prov = origin.FromMap(m).String()
+		}
+		fmt.Printf("%-7s  %-16v %-34s %v\n", kind, a["name"], prov, about)
 	}
 	for _, ct := range cts.Contacts {
 		fmt.Printf("contact  %-24v verified=%v\n", ct["name"], ct["verified"])
