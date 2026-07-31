@@ -86,7 +86,7 @@ func cmdListen(cfg config.Config, args []string) error {
 	// credential for the LOCAL hub and never leaves it (auth R10): against a
 	// remote hub only the env-named token counts, and if we hold neither that
 	// nor a secret that hub already issued us, say so instead of trying.
-	adminToken := cfg.TokenFromEnv()
+	adminToken := configuredToken(cfg)
 	if adminToken == "" {
 		if hubaddr.IsLoopback(cfg.HubURL) {
 			adminToken = localAdminToken(cfg)

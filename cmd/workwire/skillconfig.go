@@ -23,12 +23,19 @@ const skillConfigName = "skill.json"
 // drains the backlog the moment it joins.
 type skillConfig struct {
 	// AgentName pins the peer name; empty means "derive from the folder".
-	AgentName string `json:"agentName,omitempty"`
+	AgentName string `json:"agentName"`
 	// HubURL overrides the hub for this client; empty means the hub config.
-	HubURL string `json:"hubUrl,omitempty"`
-	// TokenEnv names (never holds) the env var carrying a bearer token for a
-	// remote hub. A secret value never lives in a config file.
-	TokenEnv string `json:"tokenEnv,omitempty"`
+	HubURL string `json:"hubUrl"`
+	// TokenEnv NAMES (never holds) the env var carrying a bearer token for the
+	// configured hub.
+	TokenEnv string `json:"tokenEnv"`
+	// Token is an OPTIONAL literal bearer token for the configured hub. Empty
+	// by default and NEVER auto-populated — nothing copies the minted admin
+	// token, or any other secret, in here; a value lands here only because a
+	// human typed it. A file carrying one must be 0600 (config.LiteralToken
+	// refuses a token out of a file others can read), and the value is never
+	// printed anywhere.
+	Token string `json:"token"`
 }
 
 func skillConfigPath(cfg config.Config) string {
@@ -40,13 +47,23 @@ func skillConfigPath(cfg config.Config) string {
 // "the configured hub". Unknown keys — including an `autoJoin` left behind by
 // an older install — are ignored, never a failure.
 func loadSkillConfig(path string) skillConfig {
+	sc, _ := loadSkillConfigWarn(path)
+	return sc
+}
+
+// loadSkillConfigWarn also reports a literal token this process refused to
+// use because the file is readable by others. The warning never carries the
+// token value.
+func loadSkillConfigWarn(path string) (skillConfig, string) {
 	sc := skillConfig{}
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return sc
+		return sc, ""
 	}
 	_ = json.Unmarshal(b, &sc)
-	return sc
+	var warn string
+	sc.Token, warn = config.LiteralToken(path, sc.Token)
+	return sc, warn
 }
 
 // ensureSkillConfig creates an empty skill.json when it does not exist. An
@@ -60,7 +77,9 @@ func ensureSkillConfig(path string) (bool, error) {
 		return false, err
 	}
 	b, _ := json.MarshalIndent(skillConfig{}, "", "  ")
-	return true, os.WriteFile(path, append(b, '\n'), 0o644)
+	// 0600 from birth: the file has a `token` key, so it must never be the
+	// thing that makes a secret readable by others.
+	return true, os.WriteFile(path, append(b, '\n'), config.SecretFileMode)
 }
 
 // applySkillConfig folds the CLIENT config into the resolved configuration.
@@ -81,5 +100,10 @@ func applySkillConfig(cfg *config.Config, sc skillConfig) {
 	}
 	if sc.TokenEnv != "" && os.Getenv("WORKWIRE_TOKEN_ENV") == "" {
 		cfg.TokenEnv = sc.TokenEnv
+	}
+	// The client's own literal token outranks the hub file's, and an env-set
+	// literal outranks both.
+	if sc.Token != "" && os.Getenv("WORKWIRE_TOKEN_LITERAL") == "" {
+		cfg.Token = sc.Token
 	}
 }

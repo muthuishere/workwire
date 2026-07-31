@@ -41,7 +41,16 @@ func main() {
 	// above workwire.json (see applySkillConfig). The hub's own `serve` reads
 	// only its own config — a client preference must not change how it serves.
 	if verb != "serve" {
-		applySkillConfig(&cfg, loadSkillConfig(skillConfigPath(cfg)))
+		sc, warn := loadSkillConfigWarn(skillConfigPath(cfg))
+		applySkillConfig(&cfg, sc)
+		if warn != "" {
+			fmt.Fprintln(os.Stderr, "workwire:", warn)
+		}
+	}
+	// A literal token this process refused to use (a secret in a file others
+	// can read) is said once, plainly, and never with the value.
+	if cfg.TokenWarning != "" {
+		fmt.Fprintln(os.Stderr, "workwire:", cfg.TokenWarning)
 	}
 	switch verb {
 	case "serve":
@@ -130,12 +139,15 @@ control, and cannot reach a repo that did not ask for it.
 The service is optional: without it, run "workwire serve" yourself or let a
 loopback peer auto-start the hub.
 
-Config: ~/.config/workwire/workwire.json (hub, auto-created); WORKWIRE_* env overrides every key.
-Client config: ~/.config/workwire/skill.json
-  {"agentName":"","hubUrl":"","tokenEnv":""}
-  hubUrl / tokenEnv override the hub for CLIENT verbs only. Precedence, highest first:
-  flag > WORKWIRE_* env > skill.json > workwire.json > defaults. tokenEnv NAMES the env var
-  holding the token; a secret value never lives in a config file, and the locally minted
+Config: ~/.config/workwire/workwire.json (hub, auto-created 0600); WORKWIRE_* env overrides
+every key. Client config: ~/.config/workwire/skill.json (0600)
+  {"agentName":"","hubUrl":"","tokenEnv":"","token":""}
+  hubUrl / tokenEnv / token apply to CLIENT verbs only. Precedence, highest first:
+  flag > WORKWIRE_* env > $tokenEnv > token in skill.json > token in workwire.json >
+  admin-token file (loopback only) > none.
+  tokenEnv NAMES the env var holding a token. "token" is an OPTIONAL literal, empty by
+  default and never filled in for you — BOTH config files hold secrets, must be chmod 600,
+  and are refused as a token source if anyone else can read them. The auto-minted local
   admin token is never sent to a non-loopback hub.
 `)
 }
@@ -154,10 +166,13 @@ func cmdServe(cfg config.Config) error {
 	}
 	adminToken := ""
 	if cfg.AuthMode == "token" {
-		// Env-named token (containers) wins; otherwise mint/read the 0600
-		// local admin token file (auth R2).
+		// Env-named token (containers) wins, then a literal `token` a human put
+		// in workwire.json; otherwise mint/read the 0600 local admin token
+		// file (auth R2). No value is ever printed.
 		if t := cfg.TokenFromEnv(); t != "" {
 			adminToken = t
+		} else if cfg.Token != "" {
+			adminToken = cfg.Token
 		} else {
 			t, err := auth.EnsureAdminToken(cfg.ConfigDir)
 			if err != nil {
@@ -211,6 +226,21 @@ type client struct {
 	authErr error
 }
 
+// configuredToken is every credential a human supplied on purpose, in
+// precedence order: $WORKWIRE_TOKEN, then the env var NAMED by tokenEnv, then
+// a literal `token` from a 0600 config file (skill.json above workwire.json —
+// a group/world-readable file was already refused at load). It deliberately
+// excludes the auto-minted admin-token file, which is loopback-only.
+func configuredToken(cfg config.Config) string {
+	if t := os.Getenv("WORKWIRE_TOKEN"); t != "" {
+		return t
+	}
+	if t := cfg.TokenFromEnv(); t != "" {
+		return t
+	}
+	return cfg.Token
+}
+
 // localAdminToken reads the 0600 admin-token file. It is a credential for the
 // LOCAL hub only — the caller decides whether it may be used.
 func localAdminToken(cfg config.Config) string {
@@ -232,23 +262,32 @@ func remoteHubNoCredential(cfg config.Config) error {
 		name = "WORKWIRE_TOKEN"
 	}
 	return fmt.Errorf("hubUrl %s is not loopback and no credential is available for it: "+
-		"set $%s to a token issued by that hub (the local admin token is NEVER sent to a remote hub), "+
-		"or run a verb with --as <name> once this peer is registered there", cfg.HubURL, name)
+		"set $%s to a token issued by that hub, or put one in the 0600 \"token\" key of "+
+		"%s (the auto-minted local admin token is NEVER sent to a remote hub), "+
+		"or run a verb with --as <name> once this peer is registered there",
+		cfg.HubURL, name, filepath.Join(cfg.ConfigDir, skillConfigName))
 }
 
 // newClient resolves the outbound credential for the configured hub.
 //
-//   - The env var NAMED by tokenEnv wins everywhere: it is a credential the
-//     operator supplied for THIS hub, deliberately.
-//   - The locally minted admin token is attached ONLY when hubUrl is loopback.
-//   - A non-loopback hub with neither gets no token and a stored error, so the
-//     first request fails with an actionable message rather than leaking.
+// Precedence, highest first:
+//
+//	flag  >  WORKWIRE_* env  >  the env var NAMED by tokenEnv  >
+//	literal `token` in skill.json  >  literal `token` in workwire.json  >
+//	the auto-minted admin-token file (LOOPBACK ONLY)  >  none
+//
+// Everything above the file is a credential the operator supplied on purpose,
+// so it may go to whatever hub it was configured for. The auto-minted local
+// admin token is different: nobody chose to share it, so it never leaves
+// loopback. A non-loopback hub with nothing supplied gets NO token and a
+// stored error, so the first request fails with an actionable message rather
+// than leaking (auth R10).
 func newClient(cfg config.Config) *client {
 	c := &client{
 		base: strings.TrimSuffix(cfg.HubURL, "/"),
 		http: &http.Client{Timeout: 90 * time.Second},
 	}
-	if token := cfg.TokenFromEnv(); token != "" {
+	if token := configuredToken(cfg); token != "" {
 		c.token = token
 		return c
 	}

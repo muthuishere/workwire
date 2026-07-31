@@ -195,3 +195,42 @@ loopback hub — the only hub that could have issued them — losing nothing.
 - WHEN any client reads credentials
 - THEN every entry is preserved under the local loopback hub and the file is rewritten in the hub-keyed shape with mode `0600`
 - AND a remote hub is offered none of those entries
+
+### R11: The system SHALL accept an OPTIONAL literal `token` in BOTH `workwire.json` (hub) and `skill.json` (client), empty by default and never auto-populated, and SHALL refuse to use a literal token out of a config file that others can read.
+
+Both config files are created with `"token": ""` and mode `0600`, and nothing — not the
+installer, not `serve`, not any other path — ever copies the minted admin token or any other
+secret into them. A value lands there only because a human typed it. Empty means "not set":
+it is skipped in the precedence chain and behaviour is exactly as if the key were absent.
+
+Resolution order for the outbound credential, highest first:
+
+`flag` > `WORKWIRE_*` env > the env var NAMED by `tokenEnv` > literal `token` in `skill.json`
+> literal `token` in `workwire.json` > the auto-minted `admin-token` file (LOOPBACK ONLY, per
+R10) > none.
+
+Everything above the file was supplied on purpose, so it may be sent to the hub it was
+configured for, including a remote one. The auto-minted admin token stays loopback-only. A
+token value SHALL never be printed — not in logs, errors, `status`, help output, or any echo
+of a config file's contents.
+
+#### Scenario: a literal token is used for its hub
+- GIVEN `skill.json` is mode `0600` and carries a literal `token` AND `hubUrl` names a remote hub
+- WHEN a client verb runs with no token env var set
+- THEN the request carries that token
+- AND the same file's token outranks one in `workwire.json`, while any token env var outranks both
+
+#### Scenario: a token in a readable file is refused
+- GIVEN a config file with mode `0644` carrying a non-empty `token`
+- WHEN any verb reads it
+- THEN the token is NOT used, and a warning names the file and `chmod 600 <file>` without printing the value
+- AND the verb falls through to the next credential in the order (on loopback, the minted admin token)
+
+#### Scenario: the shipped default never warns
+- GIVEN a freshly created `workwire.json` / `skill.json` with `"token": ""`
+- WHEN any verb reads them
+- THEN nothing warns, nothing is refused, and loopback behaviour is unchanged
+
+#### Scenario: config files are never auto-populated
+- WHEN the hub mints its local admin token, or the installer creates the client config
+- THEN neither file gains a token value; the minted token stays in its own `0600` `admin-token` file

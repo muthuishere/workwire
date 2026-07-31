@@ -16,12 +16,17 @@ import (
 // Config is every tunable of the hub and clients. JSON tags are the
 // workwire.json keys. Secret VALUES never live here (auth R2).
 type Config struct {
-	Bind              string `json:"bind"`
-	Port              int    `json:"port"`
-	DataDir           string `json:"dataDir"`
-	HubURL            string `json:"hubUrl"`
-	AuthMode          string `json:"authMode"` // "token" | "open"
-	TokenEnv          string `json:"tokenEnv"` // NAME of the env var holding the token
+	Bind     string `json:"bind"`
+	Port     int    `json:"port"`
+	DataDir  string `json:"dataDir"`
+	HubURL   string `json:"hubUrl"`
+	AuthMode string `json:"authMode"` // "token" | "open"
+	TokenEnv string `json:"tokenEnv"` // NAME of the env var holding the token
+	// Token is an OPTIONAL literal bearer token, empty by default and never
+	// auto-populated: a value lands here only because a human typed it. A file
+	// carrying one must be 0600 — see LiteralToken, which refuses to use a
+	// token out of a group/world-readable file. The value is never printed.
+	Token             string `json:"token"`
 	LastMessages      int    `json:"lastMessages"`
 	ContextCap        int    `json:"contextCap"`
 	WaitDefault       int    `json:"waitDefault"` // seconds
@@ -37,6 +42,10 @@ type Config struct {
 	Exposed bool `json:"-"`
 	// ConfigDir is where workwire.json, admin-token and credentials.json live.
 	ConfigDir string `json:"-"`
+	// TokenWarning is a human-readable note about a token this process
+	// REFUSED to use (a literal token in a file anyone can read). It never
+	// contains the token value; callers print it once.
+	TokenWarning string `json:"-"`
 }
 
 // Defaults returns the documented default configuration.
@@ -47,6 +56,7 @@ func Defaults() Config {
 		HubURL:            "http://127.0.0.1:14411",
 		AuthMode:          "token",
 		TokenEnv:          "WORKWIRE_TOKEN",
+		Token:             "", // never shipped with a value; a human types it or nobody does
 		LastMessages:      5,
 		ContextCap:        20,
 		WaitDefault:       25,
@@ -91,12 +101,15 @@ func load() (Config, error) {
 			if err := json.Unmarshal(b, &cfg); err != nil {
 				return cfg, fmt.Errorf("parse %s: %w", path, err)
 			}
+			cfg.Token, cfg.TokenWarning = LiteralToken(path, cfg.Token)
 		} else if errors.Is(err, os.ErrNotExist) {
 			// Auto-create with defaults on first run of any verb (R11).
 			// Best-effort: env-only hosts may have a read-only FS.
 			if err := os.MkdirAll(dir, 0o755); err == nil {
 				if b, err := json.MarshalIndent(Defaults(), "", "  "); err == nil {
-					_ = os.WriteFile(path, append(b, '\n'), 0o644)
+					// 0600 from birth: the file has a `token` key, so it must
+					// never be the thing that makes a secret world-readable.
+					_ = os.WriteFile(path, append(b, '\n'), SecretFileMode)
 				}
 			}
 		}
@@ -140,6 +153,7 @@ func applyEnv(cfg *Config) {
 	str("WORKWIRE_HUB_URL", &cfg.HubURL)
 	str("WORKWIRE_AUTHMODE", &cfg.AuthMode)
 	str("WORKWIRE_TOKEN_ENV", &cfg.TokenEnv)
+	str("WORKWIRE_TOKEN_LITERAL", &cfg.Token)
 	num("WORKWIRE_LAST_MESSAGES", &cfg.LastMessages)
 	num("WORKWIRE_CONTEXT_CAP", &cfg.ContextCap)
 	num("WORKWIRE_WAIT_DEFAULT", &cfg.WaitDefault)
@@ -167,6 +181,33 @@ func (c Config) Validate() error {
 		return errors.New("refusing to start: authMode=open cannot be combined with declared exposure (WORKWIRE_EXPOSED=1); unset the exposure flag or use authMode=token")
 	}
 	return nil
+}
+
+// SecretFileMode is the only acceptable mode for a config file that MAY hold
+// a literal token.
+const SecretFileMode os.FileMode = 0o600
+
+// LiteralToken vets a literal token read out of a config file. A token in a
+// file that the group or the world can read is not a secret, so it is
+// REFUSED — returning an empty token and a warning naming the file and the
+// fix. The token value never appears in the warning.
+//
+// An empty token is the shipped default and is always fine: a fresh install
+// never warns, because there is nothing to protect.
+func LiteralToken(path, token string) (string, string) {
+	if token == "" {
+		return "", ""
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		return token, ""
+	}
+	if fi.Mode().Perm()&0o077 != 0 {
+		return "", fmt.Sprintf(
+			"refusing the literal token in %s: the file is readable by others (mode %04o). Run: chmod 600 %s",
+			path, fi.Mode().Perm(), path)
+	}
+	return token, ""
 }
 
 // TokenFromEnv returns the token value from the env var NAMED by TokenEnv

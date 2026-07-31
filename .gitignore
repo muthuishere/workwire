@@ -3,3 +3,12 @@ site/node_modules/
 site/dist/
 site/.astro/
 dist/
+
+# workwire's own config files hold secrets (a literal `token`, the minted
+# admin token, hub-issued per-agent secrets). They live in ~/.config/workwire;
+# these entries make sure a copy inside the repo can never be committed.
+workwire.json
+skill.json
+credentials.json
+admin-token
+folders.json
