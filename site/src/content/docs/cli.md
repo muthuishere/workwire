@@ -161,11 +161,14 @@ changes), **persona** (falls back to the card `description` when a peer register
 one). Contacts render as `contact  <name>  verified=<bool>`. Empty registry prints
 `no peers`.
 
-A peer with no live listen lease is marked inline — registered is not the same as
-reachable:
+Reachability is marked inline, in three honest states — registered is not the same as
+receiving, and receiving is not the same as answering (`[listening, no answerer]` means a
+listener is delivering into an inbox file nobody is currently reading; the question is not
+lost, it is queued for that session's next engagement):
 
 ```
 agent    silent  muthuishere/other@main a1b2c3d            owns nothing yet  [no live listener]
+agent    quiet   muthuishere/api@main   9f8e7d6            owns the API      [listening, no answerer]
 ```
 
 Only peers within the liveness TTL (default 120 s) are listed. Any authenticated request
@@ -488,23 +491,37 @@ tree. If that is wrong, stop and restart with --dir /old/path
 
 `--dir` is how you state the tree instead of inheriting it from wherever the shell was.
 
-## `workwire session-start`
+## `workwire answering`
 
-The **auto-join hook entrypoint** — what the harness's `SessionStart` hook runs, so a
-session is on the wire without anyone saying a phrase. Auto-join is off unless you opted in
-with `workwire install --auto`, in which case this verb does nothing at all.
+Say whether an **answerer** is attached to a peer. A listen lease means questions are being
+*delivered* into the session inbox file; it says nothing about anyone reading them. This is
+how the difference is reported.
 
 ```bash
-workwire session-start
+workwire answering --agent <name>          # an answerer is attached (renew as you work)
+workwire answering --agent <name> --off    # standing down
 ```
 
-It reads `~/.config/workwire/skill.json`, and:
+```
+api: answerer attached
+```
 
-- exits 0 immediately and silently when `autoJoin` is `false`;
-- otherwise starts the detached listener for the current folder
-  (`--agent $(basename $PWD) --dir $PWD`), or adopts one that is already running;
-- **always exits 0, fast.** It never probes the hub, never blocks and never fails a session
-  start — a hub that is down is fine, because the listener retries by itself.
+The declaration is local evidence plus a hub call, so it also works while the hub is down —
+the listener re-declares it on its next heartbeat. It ages out on the registry TTL, so an
+answerer that stops renewing stops counting. `workwire peers` renders three states:
+
+```
+agent    api    muthuishere/workwire@main   owns the hub surface
+agent    web    muthuishere/site@main       owns the marketing site   [listening, no answerer]
+agent    docs   muthuishere/docs@main       owns the handbook         [no live listener]
+```
+
+and `workwire ask` warns immediately instead of timing out in silence:
+
+```
+warning: web is listening but nothing is attached to answer (last seen 12s ago) — the
+question is delivered and will be answered when its session next picks it up
+```
 
 ## `workwire answer`
 
@@ -542,51 +559,38 @@ That strictness is what makes an ask's completion provable: the asker's wait end
 ## `workwire install`
 
 ```bash
-workwire install [--skills] [--service] [--auto] [--all] [--on|--off] [--dir <skills-dir>] [--settings <path>]
+workwire install [--skills] [--service] [--all] [--dir <skills-dir>]
 ```
 
 | flag | meaning |
 |---|---|
 | `--skills` | install the two-way agent skill (default `~/.claude/skills/workwire`) |
 | `--service` | run the hub as a background service (launchd / `systemd --user` / `sc.exe`) |
-| `--auto` | **opt in** to auto-join: write the `SessionStart` hook that runs `workwire session-start`, and turn `autoJoin` on |
-| `--all` | all three — the recommended setup plus opt-in auto-join |
-| `--on` / `--off` | flip `autoJoin` in `skill.json`; touches nothing else |
+| `--all` | both of the above — the recommended setup |
 | `--dir <path>` | skills directory override |
-| `--settings <path>` | harness settings file (default `~/.claude/settings.json`) |
 
 At least one of them is required, otherwise:
 
 ```
-install requires --skills, --service, --auto, --all, --on or --off
+install requires --skills, --service or --all
 ```
 
-`--auto` **merges** into your existing settings file — other hooks, other events and every
-unrelated key are preserved — and is idempotent: our entry is replaced, never duplicated.
-The hook itself carries no shell logic:
+There is **no auto-join flag and no SessionStart hook**. A repo that wants its sessions on
+the wire says so in its own `CLAUDE.md` / `AGENTS.md`:
+
+```markdown
+At the start of a session, join workwire (`listen with workwire`).
+```
+
+That is per-repo by construction, visible in version control, needs no installer, and cannot
+join a repo that did not ask. Nothing is lost while a repo is closed — the hub queues
+questions against the recipient's cursor and delivers the backlog when it next joins.
+
+`--skills` also creates `~/.config/workwire/skill.json` when it is missing, mode `0600`. An
+existing file is never overwritten, so your own settings survive every re-install:
 
 ```json
-{"hooks":{"SessionStart":[{"hooks":[{"type":"command","command":"workwire session-start","async":true,"timeout":10}]}]}}
-```
-
-`--skills` also creates `~/.config/workwire/skill.json` when it is missing, with auto-join
-**off** — joining every session in every folder is opted into, never inherited. An existing
-file is never overwritten, so a deliberate `--on` or `--off` survives every re-install:
-
-```json
-{"autoJoin": false, "agentName": "", "hubUrl": ""}
-```
-
-`--auto` is the opt-in: it installs the hook *and* flips the key on, and prints the cost —
-every session in every folder joins as a peer named after that folder, and each joined
-session is in `@all`, so a broad discussion wakes all of them. `workwire install --skills
---off` turns it off instantly without removing the hook.
-
-`--on` / `--off` flip only that key — not the skill files, not the hook — so the toggle is
-instant and the hook can stay installed permanently:
-
-```
-auto-join: off (say "listen with workwire" in a session to join)
+{"agentName": "", "hubUrl": "", "tokenEnv": "", "token": ""}
 ```
 
 Real macOS output for `--service`:
@@ -610,7 +614,7 @@ pointing at the error log — it will not report a hub it cannot reach.
 ## `workwire uninstall`
 
 ```bash
-workwire uninstall [--service] [--auto] [--settings <path>]
+workwire uninstall --service
 ```
 
 ```
@@ -618,9 +622,8 @@ removed service com.workwire.hub
 kept data dir /Users/m/.config/workwire/data (messages, cursors, credentials)
 ```
 
-At least one of `--service` / `--auto` is required. `--auto` removes **exactly** our
-`SessionStart` entry and nothing else in the settings file. Messages, cursors and
-credentials are kept; there is no `uninstall --skills`.
+`--service` is required. Messages, cursors and credentials are kept; there is no
+`uninstall --skills`.
 
 ---
 
@@ -628,15 +631,47 @@ credentials are kept; there is no `uninstall --skills`.
 
 | path | what |
 |---|---|
-| `~/.config/workwire/workwire.json` | hub config, auto-created with defaults on first run |
-| `~/.config/workwire/skill.json` | client config: `autoJoin`, `agentName`, `hubUrl` |
-| `~/.config/workwire/auto-join.log` | what the auto-join hook's detached listener printed |
-| `~/.config/workwire/admin-token` | the local admin token, mode `0600` |
-| `~/.config/workwire/credentials.json` | per-peer `{agentId, agentSecret}` — what `--as` reads. Never print it |
+| `~/.config/workwire/workwire.json` | hub config, auto-created with defaults on first run, mode `0600` — **may hold a secret** (`token`) |
+| `~/.config/workwire/skill.json` | client config: `agentName`, `hubUrl`, `tokenEnv`, `token`, mode `0600` — **may hold a secret** |
+| `~/.config/workwire/admin-token` | the auto-minted local admin token, mode `0600`. Loopback only |
+| `~/.config/workwire/credentials.json` | per-hub, per-peer `{agentId, agentSecret}` — what `--as` reads. Never print it |
+| `~/.config/workwire/folders.json` | which folder joined under which peer name |
 | `~/.config/workwire/data/` | the one stateful directory (NDJSON segments, registry, contacts) |
 | `~/.config/workwire/sessions/<agent>/inbox.ndjson` | delivered envelopes, one JSON per line |
 | `~/.config/workwire/sessions/<agent>/inbox.offset` | bytes consumed, written by the reader |
-| `~/.config/workwire/run/` | the listener's advisory lock |
+| `~/.config/workwire/run/` | the listener's advisory lock and the holding folder |
 
 `WORKWIRE_CONFIG_DIR` relocates all of the above. Every config key has a `WORKWIRE_*` env
 override — see [Run it anywhere](/workwire/deploy/).
+
+## Which token a client sends
+
+Both config files take an **optional literal `token`**, empty by default and never filled in
+for you. Resolution order, highest first:
+
+| # | source | notes |
+|---|---|---|
+| 1 | a command-line flag | when a verb has one |
+| 2 | `WORKWIRE_*` env | `WORKWIRE_TOKEN`, or `WORKWIRE_TOKEN_LITERAL` for the literal key |
+| 3 | the env var **named by** `tokenEnv` | `tokenEnv` names a variable; it never holds a value |
+| 4 | `token` in `skill.json` | the client's own file wins over the hub's |
+| 5 | `token` in `workwire.json` | machine default |
+| 6 | `~/.config/workwire/admin-token` | **loopback `hubUrl` only** |
+| 7 | nothing | a remote hub then fails with a message naming the variable to set |
+
+Two rules make this safe:
+
+- **The auto-minted `admin-token` file never leaves loopback.** Nobody chose to share it, so
+  pointing `hubUrl` at another host does not hand that host admin on your hub. A literal
+  token or an env token IS a deliberate choice, so it goes to the hub it was configured for.
+- **A literal token lives only in a `0600` file.** Both configs are created `0600`. If a file
+  carrying a non-empty `token` is readable by anyone else, the token is **refused** and you
+  get one line naming the file and the fix (the value is never printed):
+
+  ```
+  workwire: refusing the literal token in ~/.config/workwire/skill.json: the file is
+  readable by others (mode 0644). Run: chmod 600 ~/.config/workwire/skill.json
+  ```
+
+`credentials.json` is keyed **by hub**: a per-agent secret issued by one hub is never
+presented to another, and registering against a second hub does not overwrite the first.

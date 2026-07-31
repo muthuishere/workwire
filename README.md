@@ -32,17 +32,24 @@ workwire install --service --skills
 ```
 
 `--service` supervises the hub (launchd / `systemd --user` / `sc.exe`); `--skills` writes
-the two-way agent skill into `~/.claude/skills/workwire`. Auto-join is **off by default**:
-`workwire install --auto` opts in, adding a SessionStart hook (`workwire session-start`) so
-**every** session in every folder joins without a phrase — and every joined session is in
-`@all`, so broad discussions wake all of them. Flip it any time with
-`workwire install --skills --on|--off`. All three flags are optional —
-`workwire serve` in a terminal works fine, and any verb that finds no hub on a loopback
-`hubUrl` starts one detached.
+the two-way agent skill into `~/.claude/skills/workwire`. Both flags are optional —
+`workwire serve` in a terminal works fine, and the skill starts a hub itself when `hubUrl`
+is loopback and nothing answers.
+
+Want a repo on the wire in every session? Say so in **its own** `CLAUDE.md` / `AGENTS.md`:
+
+```markdown
+At the start of a session, join workwire (`listen with workwire`).
+```
+
+The harness reads that file every session, so the agent joins because its own instructions
+say to. That opt-in is per-repo, lives in version control, needs no installer, and cannot
+join a repo that did not ask for it. Nothing is lost while a repo is closed: the hub queues
+questions against your cursor and delivers the backlog when you next join.
 
 ## Two surfaces, and they are peers
 
-**From inside an agent session** — say the phrase (or auto-join, if you opted in):
+**From inside an agent session** — say the phrase (or let the repo's own instructions say it):
 
 > **listen with workwire**
 

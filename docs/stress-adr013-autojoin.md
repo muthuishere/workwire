@@ -1,5 +1,11 @@
 # ADR-013 stress-test — join-by-default and the remote-hub seam · 2026-07-31
 
+> **Later note (same day):** auto-join was subsequently **deleted outright** — no
+> `session-start`, no SessionStart hook, no `autoJoin` key. A repo now opts in with a line in
+> its own `CLAUDE.md` / `AGENTS.md`. Findings A, C, E and F were fixed in code; B and C's
+> machinery survive because `workwire listen` needs them; D, G and H are moot for the removed
+> mechanism. This report is kept as the dated record that produced the decision.
+
 Adversarial review of ADR-013 (`docs/adr/013-client-config-auto-join-and-the-cli-surface.md`,
 accepted today, §1–§2 implemented in `c42310c` / `9db960e`) against the code at HEAD `9db960e`.
 71 raw claims → 8 shortlisted → 8 verified against a built binary and a live hub. **All 8 came

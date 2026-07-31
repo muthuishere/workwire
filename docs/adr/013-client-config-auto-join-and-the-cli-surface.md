@@ -1,6 +1,6 @@
-# ADR-013: a client config, join-by-default, and a noun-verb CLI that reaches a remote hub
+# ADR-013: a client config, a noun-verb CLI, and a hub somewhere else
 
-Status: partially implemented · Date: 2026-07-31
+Status: partially implemented (§2 REJECTED) · Date: 2026-07-31 · Amended: 2026-07-31
 
 ## Implementation status
 
@@ -9,14 +9,15 @@ This ADR is a mix of shipped code and stated direction. Honestly, today:
 - **§1 client config** — **implemented**. `~/.config/workwire/skill.json` exists, is created
   once by the skills install, is never overwritten, and `agentName` / `hubUrl` / `tokenEnv`
   are honoured.
-- **§2 join by default** — the **machinery is implemented** (`workwire session-start`, the
-  SessionStart hook install/uninstall, `--on` / `--off`), but the **default is OFF**, pending
-  the blast-radius review (`docs/stress-adr013-autojoin.md`): a peer name per folder,
-  personas derived from possibly-confidential `CLAUDE.md` files, no per-repo opt-out, and
-  same-basename collisions. Auto-join is enabled deliberately with `workwire install --auto`.
+  Precedence is now stated and resolved in one place: **flag > `WORKWIRE_*` env >
+  `skill.json` > `workwire.json` > defaults**. Both config files also take an optional
+  literal `token`, empty by default, `0600` enforced.
+- **§2 join by default** — **REJECTED and REMOVED** (see below). There is no
+  `workwire session-start`, no SessionStart hook, no `--auto` / `--on` / `--off` and no
+  `autoJoin` key. A repo opts in through its own `CLAUDE.md` / `AGENTS.md`.
 - **§3 noun-verb CLI** (`workwire server …` / `workwire skills …`) — **NOT implemented**. The
-  flag forms (`install --service` / `--skills` / `--auto` / `--on` / `--off`) are the only
-  surface today; there are no nouns to alias yet.
+  flag forms (`install --service` / `--skills` / `--all`) are the only surface today; there
+  are no nouns to alias yet.
 - **§4 remote hub** — **client half only**. A client can be pointed at a remote `hubUrl`, but
   there is **no server-side identity** (deferred to ADR-010), so a remote hub is only as safe
   as the network it sits on. There is no `--server-url` flag; set `hubUrl` in `skill.json`
@@ -45,42 +46,46 @@ currently a per-command env var rather than a setting.
 overwritten** on re-install:
 
 ```json
-{ "autoJoin": false, "agentName": "", "hubUrl": "", "tokenEnv": "" }
+{ "agentName": "", "hubUrl": "", "tokenEnv": "", "token": "" }
 ```
 
-Empty `agentName` means "derive from the folder". `workwire.json` continues to configure
-the hub and is not touched. A client and a hub are different things and now have different
+Empty `agentName` means "derive from the folder". `tokenEnv` NAMES an env var; `token` is an
+optional literal, empty by default and never auto-populated — a file carrying one must be
+`0600` or it is refused. `workwire.json` continues to configure the hub (and takes the same
+optional `token`) and is not touched. A client and a hub are different things and now have different
 files; the old rule holds — **dynamic state is never config** (ADR-001), and this file holds
 only preferences.
 
-### 2. Join without a ritual — machinery shipped, default off
+### 2. Join without a ritual — REJECTED, and removed
 
-A skill cannot start itself — it waits for a trigger phrase — so joining is a **SessionStart
-hook**, and the hook is one word: `workwire session-start`. That verb reads `skill.json`,
-does nothing if `autoJoin` is false, and otherwise starts the detached listener for the
-current folder.
+**Superseded on 2026-07-31. Auto-join is deleted: no `session-start` verb, no SessionStart
+hook, no `--auto` / `--on` / `--off`, no `autoJoin` key.** What follows is why, kept because
+the reasoning is the decision.
 
-The **machinery ships; the default is off.** The original decision here was "on out of the
-box"; the blast radius (§ Implementation status) has not cleared review, so joining every
-session in every folder is opted into deliberately with `workwire install --auto`, which
-installs the hook, flips the key on, and prints what it costs. `workwire install --skills
---off` turns it back off instantly without removing the hook.
+**Auto-join never bought delivery.** The hub queues every message against the recipient's own
+sequence cursor (hub-core R5). A peer that is away loses nothing: it drains its backlog the
+moment it next joins. So the only thing a SessionStart hook bought was *presence* — a peer
+being listed a little earlier.
 
-Non-negotiable properties, because when it is on this runs on **every** session the user
-opens — all of these are implemented:
-- It **always exits 0, immediately**. A missing config, a corrupt config, or a dead hub can
-  never make a session fail to start.
-- It is **silent when it has nothing to say**. Auto-join must be invisible when it works.
-- **One listener per folder.** The flock already guarantees this; a second session in the
-  same folder adopts quietly instead of erroring. That session is a **passenger** — it can
-  ask, list peers and take part in threads, but the lock-holder owns answering, so a
-  question is never answered twice.
-- Toggling is instant and does not touch the hook or the skill file: `--on` / `--off` flip
-  one key.
+**And presence was expensive.** A hook in the harness settings of every repo the user opens; a
+hub identity per folder; personas derived and published from `CLAUDE.md` / `AGENTS.md` files
+that may be confidential; same-basename collisions (`src/api` vs `other/api`) turned from a
+thing you can hit into a thing that happens automatically; and every joined session in `@all`,
+so a broad discussion wakes all of them. That is a real blast radius bought with no capability.
 
-The cost is stated rather than hidden: an auto-joined session is in `@all` (ADR-012), so
-broad discussions wake every joined session on the machine. `workwire group leave @all` is
-the dial, and the docs say so.
+**The replacement is a documented pattern, not code.** A repo that wants its sessions on the
+wire says so in its own instruction file, beside its `## workwire` block:
+
+> At the start of a session, join workwire (`listen with workwire`).
+
+The harness already loads that file every session, so the agent joins because its own
+instructions say to. This is better than a hook on every axis that mattered: it is **per-repo
+by construction**, it is **visible in version control** where a reviewer can see it, it needs
+**no installer and no settings merge**, and it **cannot join a repo nobody opted in**.
+
+What survives from the auto-join work, because `workwire listen` needed it anyway: the
+folder→name binding (`folders.json`) and the lock-holder record, which make a same-basename
+collision an explicit, reported conflict instead of two folders sharing one identity.
 
 ### 3. A noun-verb CLI — DIRECTION, not yet built
 
@@ -91,9 +96,8 @@ Three nouns, because there are three objects:
 
 ```
 workwire server  install | uninstall | start | status     # the hub process
-workwire skills  install | uninstall | --on | --off       # the agent skill + client config
+workwire skills  install | uninstall                      # the agent skill + client config
                  install --server-url <url> [--token-env NAME]
-workwire session-start                                     # the hook entrypoint
 ```
 
 When the nouns land, the existing flag forms (`install --service`, `install --skills`,
@@ -118,13 +122,18 @@ today means a trusted network. The docs must not imply otherwise.
 
 ## Consequences
 
-- Presence is one command away (`workwire install --auto`) rather than automatic. The mesh is
-  populated by people who chose it, and the default install joins nothing.
-- The blast radius of a bad auto-join grows with the number of repos a person opens, which is
-  why `session-start` is a first-class, tested CLI verb rather than shell embedded in JSON —
-  and why the default stayed off until the review closes.
-- Once auto-join is on, every session on the machine can be woken by `@all` traffic. This is a
-  real token cost and the reason group membership is a dial rather than decoration.
+- Joining stays a deliberate act: a phrase in a session, or a line the repo itself carries in
+  `CLAUDE.md` / `AGENTS.md`. The default install joins nothing and installs no hook, and no
+  repo can be joined that did not ask.
+- Nothing is lost by having no hook: queued questions are delivered from the recipient's
+  cursor when it next joins, so "away" costs latency, never messages.
+- `@all` still wakes every peer that is actually on the wire, but the population of that set is
+  now something a person chose per repo rather than a machine-wide switch.
+- A same-basename collision is reported (with a free name to use) instead of two folders
+  sharing one peer identity.
 - The client/hub config split means a future hosted deployment changes one file, not the CLI.
+  Both files may now hold a literal `token`, which makes them secret-bearing: they are created
+  `0600`, a token in a file others can read is refused with a warning, and no token value is
+  ever printed.
 - Three nouns would keep the surface legible as it grows; aliases would keep v0.1.0 users
   working — both when §3 is actually built.

@@ -33,6 +33,22 @@ workwire listen --agent <name>         # the singleton listener, foreground
 `workwire join` deliberately starts **no** listener — a person answers by typing, and
 every later verb takes `--as <name>`. `workwire listen` auto-registers if needed.
 
+## Joining is a phrase, or a line in the repo's own instructions
+
+Say **"listen with workwire"** in a session and it joins. To have a repo do it every time,
+put the instruction in that repo's own `CLAUDE.md` / `AGENTS.md`, beside its optional
+`## workwire` block:
+
+```markdown
+At the start of a session, join workwire (`listen with workwire`).
+```
+
+The harness already loads that file every session, so the agent joins because its own
+instructions say to. There is deliberately **no auto-join switch and no SessionStart hook**:
+this opt-in is per-repo by construction, visible in version control, needs no installer, and
+cannot join a repo that did not ask for it. Nothing is lost while a repo is closed — the hub
+queues questions against the recipient's cursor and delivers the backlog on the next join.
+
 ## What the skill does, both directions
 
 **Outbound (identity + verbs).** On first invocation in a session it ensures a hub is
@@ -47,6 +63,11 @@ them, or to pin what a peer may claim to own
 ([onboard a peer](/workwire/scenarios/onboard-a-peer-with-agents-md/)). If the name is
 taken, the hub answers 409 with a suggestion (`name-2`) and the skill registers under it
 — no silent takeover.
+
+**Answerability is declared, not assumed.** The listener holding a lease means questions are
+*delivered*; the attached answerer says it is there with `workwire answering --agent <name>`
+(and `--off` when it stops). That is why `workwire peers` can show `[listening, no answerer]`
+instead of implying a peer is reachable, and why `workwire ask` warns immediately.
 
 **Inbound (the answer loop).** The skill supervises a background
 `workwire listen --agent <name>` that long-polls the inbox and delivers each inbound

@@ -145,9 +145,12 @@ retention window (default 30 days or 1 GB); `DELETE /messages/<id>` writes a
 from *all* reads, including context projection (the pasted-secret path);
 `DELETE /threads/<id>` tombstones a whole thread. Registry liveness is 30 s heartbeat /
 120 s TTL, refreshed by any authenticated request — and the registry is discovery-only,
-never authorization: an ask to an aged-out agent still queues and delivers. Whether anyone
-can answer *right now* is a separate field, `listener`, surfaced as `[no live listener]`
-in `workwire peers` and as a warning on `workwire ask`.
+never authorization: an ask to an aged-out agent still queues and delivers. Reachability is
+two separate fields, because they are two separate facts: `listener` says a live listen lease
+exists — questions are being *delivered* into a session inbox file — and `answering` says
+something has declared itself attached to *read* them. `workwire peers` renders all three
+states (`[no live listener]`, `[listening, no answerer]`, live) and `workwire ask` warns for
+each instead of timing out in silence.
 
 ## Scope, stated plainly
 

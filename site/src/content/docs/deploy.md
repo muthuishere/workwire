@@ -18,13 +18,17 @@ workwire install --service --skills
 
 Registers the hub as a background service for your user and installs the agent skill. Two
 config files, deliberately separate: `workwire.json` is the **hub's**, `skill.json` is the
-**client's** (`{"autoJoin": false, "agentName": "", "hubUrl": ""}`).
+**client's** (`{"agentName": "", "hubUrl": "", "tokenEnv": "", "token": ""}`). Both are
+created mode `0600` — they may hold a secret. See
+[Which token a client sends](/workwire/cli/#which-token-a-client-sends).
 
-Auto-join is **off by default**. `workwire install --auto` (or `--all`) opts in: it writes
-the `SessionStart` hook (`workwire session-start`) so **every** session in **every** folder
-joins, and each joined session is in `@all`, so a broad discussion wakes all of them.
-Toggle it with `workwire install --skills --on|--off` — that flips one key and touches
-neither the skill nor the hook. Remove the hook with `workwire uninstall --auto`.
+There is **no auto-join and no SessionStart hook.** A repo that wants its sessions on the
+wire says so in its own `CLAUDE.md` / `AGENTS.md` — "At the start of a session, join
+workwire (`listen with workwire`)" — which is per-repo, in version control, needs no
+installer, and cannot join a repo that did not ask for it. Nothing is lost while a repo is
+closed: the hub queues questions against the recipient's cursor and delivers the backlog
+when it next joins.
+
 The backend is whatever the OS actually uses — no supervisor of ours:
 
 | OS | Backend | Where it lands |
@@ -89,7 +93,8 @@ Every key, with no gaps:
 | `dataDir` | `WORKWIRE_DATA_DIR` | `<configDir>/data`, or `/data` when no config dir resolves | the one stateful directory |
 | `hubUrl` | `WORKWIRE_HUB_URL` | `http://127.0.0.1:14411` | client-side; loopback ⇒ may auto-start |
 | `authMode` | `WORKWIRE_AUTHMODE` | `token` | `token` \| `open` — explicit, never inferred |
-| `tokenEnv` | `WORKWIRE_TOKEN_ENV` | `WORKWIRE_TOKEN` | the **name** of the env var holding the token; the value never lives in config |
+| `tokenEnv` | `WORKWIRE_TOKEN_ENV` | `WORKWIRE_TOKEN` | the **name** of the env var holding the token; naming it never puts a value in config |
+| `token` | `WORKWIRE_TOKEN_LITERAL` | `""` (empty) | OPTIONAL literal token. Empty by default and **never auto-populated**. The file must be `0600` or the token is refused |
 | `lastMessages` | `WORKWIRE_LAST_MESSAGES` | `5` | default `/inbox?context=` depth |
 | `contextCap` | `WORKWIRE_CONTEXT_CAP` | `20` | hard server cap on `?context=` |
 | `waitDefault` | `WORKWIRE_WAIT_DEFAULT` | `25` | long-poll seconds when `wait` is omitted |
@@ -114,7 +119,16 @@ behind a reverse proxy binds loopback while serving the internet. So workwire ne
 derives trust from its bind address:
 
 - `authMode=token` (default): the hub auto-mints a local admin token (0600) — localhost
-  stays zero-ceremony while co-tenants without file access get 401.
+  stays zero-ceremony while co-tenants without file access get 401. That minted token is a
+  credential for **this** hub and is **never sent to a non-loopback `hubUrl`**: point a
+  client at another host and it uses only what you supplied for that host (the `tokenEnv`
+  variable, or a literal `token` in a `0600` config file), or fails with a message naming the
+  variable to set. **Breaking change:** a LAN setup that worked by copying a shared
+  admin-token file into the config dir must now set that env var, or put the token in the
+  `token` key of a `0600` `skill.json`.
+- `credentials.json` is keyed **by hub**: a per-agent secret is presented only to the hub
+  that issued it, and registering against a second hub never overwrites the first. An older
+  name-keyed file is migrated in place on first read — nothing is lost.
 - `WORKWIRE_EXPOSED=1` declares the hub externally reachable (e.g. behind a proxy), so
   behind-proxy deployments get auth even on a loopback bind.
 - **`authMode=open` + declared exposure = the hub refuses to start**, with the reason:
