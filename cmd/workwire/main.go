@@ -355,7 +355,13 @@ func cmdPeers(cfg config.Config) error {
 	}
 	// Unified people view: agents + contacts, labeled by kind (contacts R8).
 	for _, a := range agents.Agents {
-		fmt.Printf("agent    %-24v %v\n", a["name"], a["description"])
+		// Persona is who you are actually talking to (ADR-009); fall back to the
+		// card description when a peer registered without one.
+		about, _ := a["persona"].(string)
+		if strings.TrimSpace(about) == "" {
+			about = fmt.Sprint(a["description"])
+		}
+		fmt.Printf("agent    %-24v %v\n", a["name"], about)
 	}
 	for _, ct := range cts.Contacts {
 		fmt.Printf("contact  %-24v verified=%v\n", ct["name"], ct["verified"])
