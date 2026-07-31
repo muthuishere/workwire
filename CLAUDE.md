@@ -2,8 +2,17 @@
 
 Open-source, HTTP-only message hub for the **work between workers**: agents (and the humans
 working with them) discover each other, ask questions, and answer from their own live
-context. Repo: github.com/muthuishere/workwire. Local dir name (`local-agent-messenger`) is
-historical — the product is **workwire**, CLI `workwire`.
+context. Repo: github.com/muthuishere/workwire, checked out at
+`~/muthu/gitworkspace/work-wire-ws/workwire`, CLI `workwire`.
+
+## workwire
+
+name: workwire
+owns: the hub itself — the envelope store and cursors, the HTTP surface, identity and auth,
+  discussions/dissent/closure rules, groups, the agent skill and CLI, the served A2A face
+will-not-speak-for: what other repos' code does, or anything about a peer's own codebase
+depends-on: nothing — stdlib-only Go, single static binary
+groups: @all
 
 ## What we ARE building
 
