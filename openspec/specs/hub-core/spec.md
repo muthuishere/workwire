@@ -222,3 +222,68 @@ identical behavior on a laptop, in a `FROM scratch` container, or behind a rever
 #### Scenario: unknown id
 - WHEN `DELETE /messages/m-nope` is called
 - THEN the hub responds `404` with a JSON error body
+
+### R14: The system SHALL accept `to` as either a single name (a JSON string) or an array of names, delivering ONE envelope with ONE `id` to every recipient while assigning each recipient its own sequence cursor (ADR-009). A string `to` behaves exactly as before, including its wire shape on read. Delivery stays at-least-once and consumers dedupe by envelope `id`; storage stays one stored envelope regardless of recipient count.
+
+#### Scenario: single recipient is unchanged
+- GIVEN a client sends `{"to":"repoA","text":"..."}`
+- WHEN `repoA` polls its inbox
+- THEN it receives exactly one message whose `to` is the plain string `"repoA"`, and its cursor advances once
+
+#### Scenario: array fan-out shares one id
+- GIVEN a client sends `{"to":["repoA","repoB","repoC"],"text":"..."}`
+- WHEN each of the three polls its inbox
+- THEN each receives one message carrying the SAME envelope `id`, each with its own distinct `next` cursor, and polling again from that cursor returns nothing
+
+#### Scenario: sender is not a recipient of its own envelope
+- WHEN an agent addresses a list that does not include itself
+- THEN its own inbox receives nothing for that envelope
+
+### R15: The system SHALL accrue thread membership from participation: the members of a thread are everyone who has sent into it or been addressed in it, and the first sender is recorded as its INITIATOR. A `POST /send` carrying only `thread_id` (no `to`) SHALL fan out to all current members except the sender; sending into a thread the sender was not in joins them to it. Membership and initiator SHALL survive a hub restart. A send with neither `to` nor a known thread returns `400` with a clear error.
+
+#### Scenario: reply addressed only by thread
+- GIVEN thread `t-1` with members `alice`, `repoA`, `repoB`
+- WHEN `repoA` sends `{"thread_id":"t-1","text":"..."}` with no `to`
+- THEN `alice` and `repoB` each receive the envelope and `repoA` does not
+
+#### Scenario: join by sending
+- GIVEN `repoC` is not a member of thread `t-1`
+- WHEN `repoC` sends into `t-1`
+- THEN `repoC` becomes a member and receives subsequent fan-out; the hub still stamps `from` server-side
+
+#### Scenario: membership survives restart
+- GIVEN thread `t-1` accrued four members
+- WHEN the hub restarts and replays its segments
+- THEN `t-1` still reports the same members and the same initiator
+
+### R16: The system SHALL converge discussions by two mechanisms (ADR-009). An envelope with `kind:"resolved"` closes the thread; only the thread INITIATOR may send it — a non-initiator receives `403` naming the initiator and pointing at `kind:"proposal"`, which is accepted and never closes the thread. Further sends to a resolved thread return `409`; there is no reopen path. Independently, once a thread reaches `maxThreadMessages` envelopes (default `24`, `WORKWIRE_MAX_THREAD_MESSAGES`) it is `stalled`: fan-out stops and sends return `409` with an error naming the cap, how to raise it, and the initiator it is handed back to.
+
+#### Scenario: participant may not resolve
+- GIVEN `alice` opened thread `t-1` and `repoA` is a participant
+- WHEN `repoA` sends `kind:"resolved"`
+- THEN the hub responds `403` with an error naming `alice` and `kind:"proposal"`, and the thread stays open
+
+#### Scenario: proposal is a recommendation
+- WHEN `repoA` sends `kind:"proposal"`
+- THEN it is stored and delivered like any contribution and the thread state remains `open`
+
+#### Scenario: initiator resolves
+- WHEN `alice` sends `kind:"resolved"` on `t-1`
+- THEN the thread state becomes `resolved` and any further send by any member returns `409`
+
+#### Scenario: round cap trips
+- GIVEN `maxThreadMessages` is `6` and thread `t-1` holds 6 envelopes
+- WHEN any member sends again
+- THEN the hub responds `409` with an error naming the cap (`6`), `maxThreadMessages` / `WORKWIRE_MAX_THREAD_MESSAGES`, and the initiator, and the thread state reads `stalled`
+
+### R17: The system SHALL carry an optional `persona` on the agent card — a short self-description supplied at registration — serve it on `GET /agents` and `GET /agents/<name>/card`, and include each speaker's persona alongside `from` in projected `context` entries, so a participant can weigh who said what. The hub neither invents nor validates personas. `GET /threads` SHALL list live threads with `thread_id`, `initiator`, `members`, `count` and `state` (`open` | `resolved` | `stalled`).
+
+#### Scenario: persona round-trip
+- GIVEN an agent registers with `{"name":"repoA","persona":"owns auth; will not speak for the web UI"}`
+- WHEN a peer reads `GET /agents/repoA/card` or `GET /agents`
+- THEN the persona is returned verbatim
+
+#### Scenario: late joiner reads who said what
+- GIVEN thread `t-1` already has several messages and `late` has never polled it
+- WHEN `late` is addressed on `t-1` and polls its inbox
+- THEN the delivery's `context` carries the prior thread messages, each stamped `kind:"context"` and annotated with the speaker's `persona` where one is registered

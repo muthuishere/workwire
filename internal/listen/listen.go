@@ -26,6 +26,10 @@ type Options struct {
 	AdminToken string // registration bootstrap only (never printed)
 	Wait       int    // long-poll seconds
 	Context    int    // context depth attached at read time
+	// Persona is the session's short self-description (ADR-009), derived by
+	// the skill from the repo's own CLAUDE.md / AGENTS.md; sent at
+	// registration so peers know which vantage point is talking.
+	Persona string
 	Heartbeat  time.Duration
 	InboxPath  string // override; default <ConfigDir>/sessions/<agent>/inbox.ndjson
 	// RotateMaxBytes rotates (truncates) the inbox file once it exceeds this
@@ -236,11 +240,15 @@ func (r *Runner) EnsureRegistered() error {
 
 func (r *Runner) card(name string) map[string]any {
 	cwd, _ := os.Getwd()
-	return map[string]any{
+	card := map[string]any{
 		"name":         name,
 		"project":      cwd,
 		"capabilities": []string{"ask"},
 	}
+	if r.opts.Persona != "" {
+		card["persona"] = r.opts.Persona
+	}
+	return card
 }
 
 // AcquireLease takes (or renews) the hub-side listen lease — the

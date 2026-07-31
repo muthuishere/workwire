@@ -24,6 +24,7 @@ func cmdListen(cfg config.Config, args []string) error {
 	inbox := fs.String("inbox", "", "session inbox file override (default <config>/sessions/<agent>/inbox.ndjson)")
 	wait := fs.Int("wait", cfg.WaitDefault, "long-poll seconds")
 	ctxDepth := fs.Int("context", cfg.LastMessages, "context depth attached at read time")
+	persona := fs.String("persona", "", "short self-description sent at registration: who this worker is, what it owns, what it will not speak for")
 	fs.Parse(args)
 	if *agent == "" {
 		return fmt.Errorf("listen requires --agent <name>")
@@ -58,6 +59,7 @@ func cmdListen(cfg config.Config, args []string) error {
 		AdminToken: adminToken,
 		Wait:       *wait,
 		Context:    *ctxDepth,
+		Persona:    *persona,
 		Heartbeat:  time.Duration(cfg.HeartbeatSeconds) * time.Second,
 		InboxPath:  *inbox,
 		Logf:       logf,
