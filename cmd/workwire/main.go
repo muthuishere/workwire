@@ -83,6 +83,10 @@ func main() {
 		err = cmdThreads(cfg, args)
 	case "listen":
 		err = cmdListen(cfg, args)
+	case "name":
+		err = cmdName(cfg, args)
+	case "forget":
+		err = cmdForget(cfg, args)
 	case "answer":
 		err = cmdAnswer(cfg, args)
 	case "answering":
@@ -123,7 +127,9 @@ Usage:
   workwire group leave @<group>           opt out — leaving @all is how you go quiet
   workwire group invite @<group> <peer> ["reason"]   ASK a peer to join; sends a message, adds nobody
   workwire reopen <thread> "<reason>"     reopen a resolved or stalled thread (humans only)
-  workwire listen --agent <name>          singleton listener: deliver inbound questions to the session inbox file
+  workwire listen [--agent <name>]        singleton listener: deliver inbound questions to the session inbox file
+  workwire name [--dir <path>]            print the peer name a join would use (<repo>-<branch>)
+  workwire forget <name>...               drop a dead registration (a renamed peer); messages and threads are kept
   workwire answer <id> <text>             answer a delivered question by its concrete envelope id
   workwire answering --agent <name>       declare an answerer attached to this peer (--off to stand down)
   workwire install --service --skills     recommended setup: hub as a background service + the agent skill

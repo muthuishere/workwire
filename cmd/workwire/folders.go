@@ -11,15 +11,15 @@ import (
 	"github.com/muthuishere/workwire/internal/listen"
 )
 
-// A derived agent name is `filepath.Base(dir)`, so `~/src/api` and
-// `~/work/other/api` both want to be `api`. Nothing checked, so the second
+// A derived agent name is `<repo>-<branch>` (origin.DeriveName), so two
+// checkouts of the same repo on the same branch both want the same name. Nothing checked, so the second
 // folder was told it had joined while it was on the wire under no name at all
 // — and `ask api "..."` was then answered confidently about a different
 // codebase.
 //
 // folders.json is the local binding that makes a folder's identity stable and
 // a collision detectable: abs dir -> name. It is deliberately NOT a rename
-// scheme — the name stays the folder's own basename, and the flock stays
+// scheme — the name stays what the tree derives, and the flock stays
 // name-keyed (everything downstream is). What changes is that a second folder
 // wanting a taken name is TOLD, with the hub's own suggestion, instead of
 // silently sharing an identity.

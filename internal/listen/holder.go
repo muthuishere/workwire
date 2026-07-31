@@ -12,7 +12,8 @@ import (
 // credential, one inbox and a deadlock on one lease.
 //
 // What the lock cannot say is WHICH folder is holding it — and a derived name
-// is a folder basename, so `src/api` and `other/api` land on the same lock.
+// is derived from the tree, so two checkouts of one repo+branch land on the
+// same lock.
 // The holder file says it: a plain, readable sidecar next to the lock (the
 // lock file itself is unreadable to other processes on Windows, where the
 // exclusive open IS the lock).

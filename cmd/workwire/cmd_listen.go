@@ -12,6 +12,7 @@ import (
 	"github.com/muthuishere/workwire/internal/config"
 	"github.com/muthuishere/workwire/internal/hubaddr"
 	"github.com/muthuishere/workwire/internal/listen"
+	"github.com/muthuishere/workwire/internal/origin"
 	persona_ "github.com/muthuishere/workwire/internal/persona"
 )
 
@@ -20,7 +21,7 @@ import (
 // session inbox file. It never answers anything itself.
 func cmdListen(cfg config.Config, args []string) error {
 	fs := flag.NewFlagSet("listen", flag.ExitOnError)
-	agent := fs.String("agent", "", "agent name (required)")
+	agent := fs.String("agent", "", "agent name (default: <repo>-<branch> for --dir)")
 	inbox := fs.String("inbox", "", "session inbox file override (default <config>/sessions/<agent>/inbox.ndjson)")
 	wait := fs.Int("wait", cfg.WaitDefault, "long-poll seconds")
 	ctxDepth := fs.Int("context", cfg.LastMessages, "context depth attached at read time")
@@ -29,9 +30,6 @@ func cmdListen(cfg config.Config, args []string) error {
 	maxRetries := fs.Int("max-retries", 0, "give up after N consecutive failed hub attempts (default 0 = retry forever)")
 	groups := fs.String("groups", "", "comma-separated audiences to join (default: the `groups:` line in this directory's AGENTS.md / CLAUDE.md)")
 	fs.Parse(args)
-	if *agent == "" {
-		return fmt.Errorf("listen requires --agent <name>")
-	}
 	// Persona comes from --dir (or cwd) — the tree this listener speaks for —
 	// unless the caller stated one; one capped line, never the whole file.
 	personaExplicit := *persona != ""
@@ -53,6 +51,18 @@ func cmdListen(cfg config.Config, args []string) error {
 	originDir := *dir
 	if originDir == "" {
 		originDir, _ = os.Getwd()
+	}
+	// The name follows the tree, not the folder: `<repo>-<branch>`, so two
+	// branches of one repo are two peers instead of one confused one.
+	// Precedence: --agent > skill.json agentName > derived.
+	if *agent == "" {
+		*agent = loadSkillConfig(skillConfigPath(cfg)).AgentName
+	}
+	if *agent == "" {
+		*agent = origin.DeriveName(originDir)
+		if *agent == "" {
+			return fmt.Errorf("could not derive an agent name for %s — pass --agent <name>", absOf(originDir))
+		}
 	}
 	// A name is one folder's identity. Another folder already holding it is a
 	// conflict, not an adoption: sharing it would put two codebases behind one

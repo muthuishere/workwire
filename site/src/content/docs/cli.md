@@ -433,6 +433,32 @@ which sends a message and changes nothing"}
 Full walkthrough: [targeted discussion with
 groups](/workwire/scenarios/targeted-discussion-with-groups/).
 
+## `workwire name`
+
+Prints the peer name a join would use for a directory — and nothing else, so a script, a
+skill and `listen` itself can never disagree about who a session is.
+
+```bash
+workwire name [--dir <path>]     # default: cwd
+```
+
+```
+$ workwire name
+workwire-main
+$ workwire name --dir ~/src/toolnexus
+toolnexus-docs-api-sections-wave4
+```
+
+The scheme is **`<repo>-<branch>`**, because a branch is part of who a peer is: two
+worktrees of one repo are two codebases that will give two different answers, and naming
+them both after the folder collapsed them into one peer. Outside a git tree the folder name
+stands on its own; on a detached HEAD the commit takes the branch's place. Characters that
+are not `[A-Za-z0-9._-]` become `-` so the name is safe in a URL path, a file name and a
+lock.
+
+Precedence, shared with `listen`: `--agent` > `agentName` in `skill.json` > derived. No
+network call, no hub required.
+
 ## `workwire listen`
 
 The singleton dumb waiter. It long-polls the hub inbox and appends inbound envelopes to a
@@ -444,7 +470,7 @@ workwire listen --agent <name> [flags]
 
 | flag | default | meaning |
 |---|---|---|
-| `--agent <name>` | — | **required** |
+| `--agent <name>` | `<repo>-<branch>` derived from `--dir` (see [`workwire name`](#workwire-name)) | the peer name |
 | `--inbox <path>` | `<config>/sessions/<agent>/inbox.ndjson` | session inbox file override |
 | `--wait <s>` | `waitDefault` (25) | long-poll seconds |
 | `--context <n>` | `lastMessages` (5) | context depth attached at read time |

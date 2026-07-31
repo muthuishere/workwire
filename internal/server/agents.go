@@ -260,6 +260,30 @@ func (s *Server) handleAnswering(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"answering": s.registry.AnswererLive(name)})
 }
 
+// DELETE /agents/{name} drops a registration: the identity, its credential,
+// its lease and its group memberships. Messages are NOT touched — history is
+// append-only (ADR-008). Admin, or the agent itself standing down for good.
+//
+// The case this exists for is a RENAME: a session that joined as `api` now
+// joins as `api-main`, and the old name would otherwise linger forever as a
+// peer that `peers` lists and `ask` can address but nobody will ever answer.
+func (s *Server) handleForget(w http.ResponseWriter, r *http.Request) {
+	id, ok := s.identify(w, r)
+	if !ok {
+		return
+	}
+	name := r.PathValue("name")
+	if id.Kind == auth.KindAgent && id.Agent.Name != name {
+		writeErr(w, http.StatusForbidden, "forbidden: credential does not correspond to agent")
+		return
+	}
+	if !s.registry.Forget(name) {
+		writeErr(w, http.StatusNotFound, "agent not found")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 // DELETE /agents/{name}/listen-lease with the current leaseId → 204.
 func (s *Server) handleLeaseRelease(w http.ResponseWriter, r *http.Request) {
 	id, ok := s.identify(w, r)

@@ -155,6 +155,22 @@ func (r *Registry) LeaveGroup(group, peer string) (string, bool) {
 	return name, true
 }
 
+// forgetGroupsLocked drops a peer from every audience it joined. Called with
+// r.mu held by Forget; an emptied non-default group is GC'd, exactly as
+// leaving it one at a time would (ADR-012).
+func (r *Registry) forgetGroupsLocked(peer string) {
+	for name, set := range r.groups {
+		if !set[peer] {
+			continue
+		}
+		delete(set, peer)
+		if len(set) == 0 && name != DefaultGroup {
+			delete(r.groups, name)
+		}
+	}
+	r.persistGroupsLocked()
+}
+
 // GroupMembers returns a snapshot of the group's current members, sorted.
 func (r *Registry) GroupMembers(group string) ([]string, bool) {
 	r.mu.Lock()

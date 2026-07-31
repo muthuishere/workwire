@@ -95,3 +95,63 @@ func TestDetectRealGitRepo(t *testing.T) {
 func writeFile(path, body string) error {
 	return os.WriteFile(path, []byte(body), 0o644)
 }
+
+func TestDeriveName(t *testing.T) {
+	// Not a git tree: the folder name is the whole identity, no trailing dash.
+	d := t.TempDir()
+	scratch := filepath.Join(d, "scratch")
+	if err := os.MkdirAll(scratch, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := DeriveName(scratch); got != "scratch" {
+		t.Fatalf("non-git name = %q, want scratch", got)
+	}
+
+	// A git tree names the branch too, so two branches are two peers.
+	repo := filepath.Join(d, "api")
+	mustGit(t, "", "init", "-q", "-b", "main", repo)
+	if err := writeFile(filepath.Join(repo, "f.txt"), "x"); err != nil {
+		t.Fatal(err)
+	}
+	mustGit(t, repo, "add", ".")
+	mustGit(t, repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "init")
+	if got := DeriveName(repo); got != "api-main" {
+		t.Fatalf("git name = %q, want api-main", got)
+	}
+
+	// A slashed branch is sanitized, not truncated, and stays distinct.
+	mustGit(t, repo, "checkout", "-q", "-b", "feat/tokens")
+	if got := DeriveName(repo); got != "api-feat-tokens" {
+		t.Fatalf("branch name = %q, want api-feat-tokens", got)
+	}
+
+	// Detached HEAD has no branch; the commit identifies the tree instead.
+	sha := git(repo, "rev-parse", "--short", "HEAD")
+	mustGit(t, repo, "checkout", "-q", "--detach", "HEAD")
+	if got := DeriveName(repo); got != "api-"+sha {
+		t.Fatalf("detached name = %q, want api-%s", got, sha)
+	}
+}
+
+func TestSanitizeName(t *testing.T) {
+	for _, c := range []struct{ in, want string }{
+		{"api-feature/x", "api-feature-x"},
+		{"api-", "api"},
+		{"a//b", "a-b"},
+		{"ok.name_1", "ok.name_1"},
+	} {
+		if got := sanitizeName(c.in); got != c.want {
+			t.Errorf("sanitizeName(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+}
+
+func mustGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git %v: %v\n%s", args, err, out)
+	}
+}
+

@@ -15,8 +15,9 @@ session joining rather than a config file: you know. Keep it under ~200 characte
 truncates), and never paste the repo's instruction file into it.
 
 ```bash
-# the entire join, in one shot (agent name = current directory basename):
-NAME=$(basename "$PWD")
+# the entire join, in one shot. NEVER derive the name yourself — `workwire name`
+# is the one answer (`<repo>-<branch>`, e.g. workwire-main; folder name outside git):
+NAME=$(workwire name --dir "$PWD")
 workwire status >/dev/null 2>&1 || { nohup workwire serve >/dev/null 2>&1 & disown; sleep 1; }
 mkdir -p ~/.config/workwire/sessions/$NAME
 # --persona: YOUR one-line self-description (see above). --dir: state the tree explicitly,
@@ -141,9 +142,15 @@ Credentials: `~/.config/workwire/credentials.json` (0600, hub-issued; never prin
 - **Hub**: only auto-start when the configured `hubUrl` is loopback. If `hubUrl` is a REMOTE
   host and unreachable, never start one — report it and stop. If the bind fails, another
   session won the race; proceed as a client.
-- **Name**: directory basename unless the user names it. First run auto-registers; a taken
-  name adopts the hub's suggestion (log says `registered as <name-2>`) — use that name from
-  then on.
+- **Name**: `<repo>-<branch>` — `workwire-main`, `toolnexus-docs-api-sections-wave4`. Outside
+  a git tree it is the folder name; on a detached HEAD, `<repo>-<commit>`. `workwire listen`
+  derives it itself when you pass no `--agent`, and `workwire name` prints the same answer,
+  so a script and the listener can never disagree. **Do not compute a name yourself** — a
+  bare folder name is exactly the bug this replaced: two branches of one repo are two
+  codebases with two different answers, and they used to collide into one peer.
+  Precedence: `--agent` > `agentName` in `skill.json` > derived. First run auto-registers; a
+  taken name adopts the hub's suggestion (log says `registered as <name-2>`) — use that name
+  from then on.
 - **Singleton**: `listen` holds a flock + hub lease. If the log says another listener already
   holds it, ADOPT it — never start a second, never kill it. If it died, start it again; it
   resumes from its persisted cursor, nothing is lost.

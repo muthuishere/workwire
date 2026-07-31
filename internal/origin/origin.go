@@ -144,9 +144,79 @@ func Detect(dir string) *Info {
 		i.Repo = baseName(top)
 	}
 	i.Branch = git(dir, "rev-parse", "--abbrev-ref", "HEAD")
+	if i.Branch == "" {
+		// An unborn branch (fresh `git init`, no commit yet) has no HEAD to
+		// resolve, but it does have a name — and a peer joining from a brand
+		// new repo should still be `<repo>-<branch>`, not just the folder.
+		i.Branch = git(dir, "symbolic-ref", "--short", "HEAD")
+	}
 	i.Commit = git(dir, "rev-parse", "--short", "HEAD")
 	i.Dirty = git(dir, "status", "--porcelain") != ""
 	return i
+}
+
+// DeriveName is the default peer name: `<repo>-<branch>`, e.g. `workwire-main`
+// or `toolnexus-docs-api-sections-wave4`.
+//
+// The folder basename alone was wrong, and wrong in the way that matters: two
+// sessions on two branches of the SAME repo are two different codebases with
+// two different answers, and under a folder-derived name they collided into
+// one peer (or, worse, one of them was told a name was taken and went quiet).
+// A worktree of `cljgo` on `feat/x` is not `cljgo`. Branch is part of who you
+// are, so it is part of the name — `main` included, because a scheme that only
+// sometimes appends the branch is one nobody can predict.
+//
+// Outside a git tree there is no branch to add, so the folder basename stands.
+// A detached HEAD names the commit instead — it is what identifies that tree.
+func DeriveName(dir string) string {
+	if dir == "" {
+		dir, _ = os.Getwd()
+	}
+	folder := sanitizeName(baseName(strings.TrimRight(dir, "/")))
+	i := Detect(dir)
+	if i.Repo == "" && i.Branch == "" {
+		return folder // not a git tree: the folder is the whole identity
+	}
+	repo := i.Repo
+	if j := strings.LastIndex(repo, "/"); j >= 0 {
+		repo = repo[j+1:] // owner/name -> name
+	}
+	if repo == "" {
+		repo = folder
+	}
+	branch := i.Branch
+	if branch == "HEAD" || branch == "" { // detached HEAD: the commit identifies it
+		branch = i.Commit
+	}
+	if branch == "" {
+		return folder
+	}
+	return sanitizeName(repo + "-" + branch)
+}
+
+// sanitizeName keeps a derived name safe for a URL path element, a file name
+// and a flock: letters, digits, `.`, `_` and `-`, with runs of separators
+// collapsed. It never returns an empty string for non-empty input.
+func sanitizeName(s string) string {
+	var b strings.Builder
+	prevDash := false
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '_':
+			b.WriteRune(r)
+			prevDash = false
+		default:
+			if !prevDash {
+				b.WriteByte('-')
+				prevDash = true
+			}
+		}
+	}
+	out := strings.Trim(b.String(), "-.")
+	if out == "" {
+		return strings.Trim(s, "-")
+	}
+	return out
 }
 
 func baseName(p string) string {

@@ -28,7 +28,7 @@ human    priya                                               owns the web roadma
 Read that line by line — every column is doing work:
 
 - **kind** — `agent` or `human`. Not a label: it decides precedence at closure.
-- **name** — the hub-assigned peer name (directory basename by default; a taken name
+- **name** — the hub-assigned peer name (`<repo>-<branch>` by default; a taken name
   gets a `-2` suggestion, never a silent takeover).
 - **provenance** — `repo@branch commit`, auto-derived from the working tree the peer
   registered from. The trailing **`*` means the tree is dirty** — there are uncommitted

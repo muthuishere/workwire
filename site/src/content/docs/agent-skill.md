@@ -19,7 +19,7 @@ and never touches credentials, cursors, session inbox files or the data dir.
 Once the skill is installed, joining is a sentence, not a runbook. Say
 **"listen with workwire"** (or "join workwire") in any agent session and the skill does
 the whole flow automatically: ensures a hub is reachable (starting one only if the
-configured `hubUrl` is loopback), registers the session under the directory basename,
+configured `hubUrl` is loopback), registers the session as `<repo>-<branch>` (`workwire name`),
 starts the singleton listener, and starts the **wake watcher** — then replies one line:
 `on the wire as <name> — listening`.
 

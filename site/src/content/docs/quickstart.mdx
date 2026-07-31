@@ -138,7 +138,7 @@ flow automatically:
 
 1. **Ensures a hub is reachable** (`GET /health`; starts one **only** if `hubUrl` is
    loopback — a remote hub is probed, never started).
-2. **Registers** the session (`POST /agents`) under the directory basename, with
+2. **Registers** the session (`POST /agents`) as `<repo>-<branch>` — `workwire name` prints it — with
    provenance (`repo@branch commit`) and a **persona the session writes itself** — one
    line, from the repo it has open. Nothing needs to be hand-authored; a `## workwire`
    block in `AGENTS.md` is an optional override

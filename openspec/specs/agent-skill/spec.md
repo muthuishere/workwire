@@ -341,8 +341,8 @@ place where messages live.
 
 ### R17: The system SHALL bind a derived peer name to ONE folder and SHALL report a collision rather than sharing an identity
 
-A derived name is the folder's basename, so two checkouts named `api` want the same peer
-name. The flock stays keyed by NAME — credentials, the session inbox file, the cursor and the
+A derived name is `<repo>-<branch>` (R19), so two checkouts of the SAME repo on the SAME
+branch still want the same peer name. The flock stays keyed by NAME — credentials, the session inbox file, the cursor and the
 hub lease are all name-scoped, and keying it by folder would give two same-named listeners one
 credential, one inbox and a deadlock on one lease. What the system SHALL NOT do is let the
 second folder share the first's identity while being told it joined. It SHALL persist a local
@@ -407,3 +407,40 @@ file by an older install SHALL be ignored, never an error.
 - GIVEN a `skill.json` still carrying `"autoJoin": true` from an older install
 - WHEN any verb reads it
 - THEN the key is ignored and no join happens because of it
+
+### R19: The system SHALL derive a peer name from the TREE — `<repo>-<branch>` — and SHALL expose that derivation as a verb
+
+A peer name is an identity claim: `ask api "..."` must reach the codebase the asker meant.
+The folder basename alone broke that claim, because two worktrees of one repo on two
+branches are two different codebases that answer differently, and both wanted the folder's
+name. The branch is therefore part of the name, `main` included — a scheme that appends the
+branch only sometimes is one no caller can predict.
+
+The system SHALL derive `<repo>-<branch>` from the tree named by `--dir` (cwd otherwise),
+where `<repo>` is the basename of the git remote's `owner/name` (the toplevel folder when
+there is no remote). Outside a git tree the folder name SHALL stand alone. On a detached
+HEAD the short commit SHALL take the branch's place. Characters outside `[A-Za-z0-9._-]`
+SHALL become `-`, with runs collapsed, so the name is safe as a URL path element, a file
+name and a lock key.
+
+`listen` SHALL derive the name when `--agent` is absent, and the derivation SHALL be
+available on its own as `workwire name [--dir]`, so a skill, a script and the listener
+cannot disagree about who a session is. Precedence SHALL be `--agent` > `agentName` in
+`skill.json` > derived.
+
+#### Scenario: two branches of one repo are two peers
+- GIVEN `~/src/cljgo` is on `main` and `~/src/cljgo-wt` is a worktree of the same repo on `feat/x`
+- WHEN each joins with no `--agent`
+- THEN they register as `cljgo-main` and `cljgo-feat-x`, and neither reports a name collision
+
+#### Scenario: outside a git tree the folder name stands
+- WHEN `workwire name --dir /tmp/scratch` runs and the directory is not a git tree
+- THEN it prints `scratch`, with no trailing separator
+
+#### Scenario: the verb and the listener agree
+- WHEN `workwire name --dir <d>` prints `N`
+- THEN `workwire listen --dir <d>` with no `--agent` registers as `N`
+
+#### Scenario: an explicit name still wins
+- WHEN `workwire listen --agent chosen --dir <d>` runs
+- THEN it registers as `chosen`, whatever the tree would have derived

@@ -35,7 +35,7 @@ Also derived automatically, from the session's working directory:
 
 - **provenance** — `repo@branch commit` (trailing `*` = uncommitted changes), so every
   peer can see *which tree* is talking;
-- **name** — the directory basename, with a `name-2` suggestion on collision (no silent
+- **name** — `<repo>-<branch>` (folder name outside git), with a `name-2` suggestion on collision (no silent
   takeover);
 - **groups** — from a `groups:` line, if there is one. Every peer joins `@all` regardless.
 

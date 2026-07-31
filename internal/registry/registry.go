@@ -310,6 +310,28 @@ func (r *Registry) Get(name string) (*Agent, bool) {
 	return a, ok
 }
 
+// Forget removes an agent from the registry entirely: the identity, its
+// credential, its lease and its group memberships. Nothing in the envelope
+// store is touched — what a peer said stays said, and threads keep their
+// history (ADR-008: deletion is a tombstone, never a rewrite).
+//
+// This exists because a peer can be RENAMED — a session that used to join as
+// `api` now joins as `api-main` — and without a way to drop the old identity
+// the registry accumulates ghosts that `peers` lists and `ask` can address,
+// each one a listener nobody will ever start again.
+func (r *Registry) Forget(name string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.agents[name]; !ok {
+		return false
+	}
+	delete(r.agents, name)
+	delete(r.leases, name)
+	r.persistLocked()
+	r.forgetGroupsLocked(name)
+	return true
+}
+
 // Touch refreshes liveness: ANY authenticated request from an agent counts
 // as a heartbeat (registry-a2a R3, ADR-008). It also renews the agent's
 // listen lease when it holds one (registry-a2a R10 renew-rides-heartbeat).

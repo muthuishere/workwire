@@ -57,6 +57,7 @@ func New(cfg config.Config, st *store.Store, reg *registry.Registry, dir *contac
 	mux.HandleFunc("DELETE /messages/{id}", s.handleDeleteMessage)
 	mux.HandleFunc("GET /agents", s.handleListAgents)
 	mux.HandleFunc("POST /agents", s.handleRegister)
+	mux.HandleFunc("DELETE /agents/{name}", s.handleForget)
 	mux.HandleFunc("GET /agents/{name}/card", s.handleCard)
 	mux.HandleFunc("POST /agents/{name}/ask", s.handleAsk)
 	mux.HandleFunc("POST /agents/{name}/rpc", s.handleRPC)

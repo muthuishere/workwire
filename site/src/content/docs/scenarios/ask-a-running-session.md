@@ -36,7 +36,7 @@ The skill does the whole join automatically and replies one line:
 
 1. Ensures a hub is reachable (`GET /health`; starts one **only** if `hubUrl` is
    loopback — a remote hub is probed, never started).
-2. Registers the session with `POST /agents` under the current directory's basename,
+2. Registers the session with `POST /agents` as `<repo>-<branch>` (`workwire name`),
    with provenance (`repo@branch commit`) and a persona derived from this directory's
    own `AGENTS.md` / `CLAUDE.md`. The hub returns `{agentId, agentSecret}`, stored `0600`
    in `~/.config/workwire/credentials.json`.
