@@ -43,6 +43,9 @@ type skillConfig struct {
 	AgentName string `json:"agentName"`
 	// HubURL overrides the hub for this client; empty means the hub config.
 	HubURL string `json:"hubUrl"`
+	// TokenEnv names (never holds) the env var carrying a bearer token for a
+	// remote hub (ADR-013). A secret value never lives in a config file.
+	TokenEnv string `json:"tokenEnv"`
 }
 
 func skillConfigPath(cfg config.Config) string {
