@@ -62,7 +62,12 @@ type Card struct {
 	Capabilities []string   `json:"capabilities,omitempty"`
 	Skills       []Skill    `json:"skills,omitempty"`
 	Project      string     `json:"project,omitempty"`
-	AskPolicy    *AskPolicy `json:"askPolicy,omitempty"`
+	// Persona is a short self-description derived by the skill from the
+	// session's own CLAUDE.md / AGENTS.md and cwd: who this worker is, what
+	// it owns, what it will not speak for (ADR-009). The hub neither invents
+	// nor validates it.
+	Persona   string     `json:"persona,omitempty"`
+	AskPolicy *AskPolicy `json:"askPolicy,omitempty"`
 }
 
 // Agent is a registered identity. SecretHash only — never the secret value.
@@ -74,6 +79,7 @@ type Agent struct {
 	Capabilities []string   `json:"capabilities,omitempty"`
 	Skills       []Skill    `json:"skills,omitempty"`
 	Project      string     `json:"project,omitempty"`
+	Persona      string     `json:"persona,omitempty"`
 	AskPolicy    *AskPolicy `json:"askPolicy,omitempty"`
 	LastSeen     time.Time  `json:"lastSeen"`
 }
@@ -177,6 +183,7 @@ func (r *Registry) Register(card Card, presentedSecret string) RegisterResult {
 		existing.Capabilities = card.Capabilities
 		existing.Skills = card.Skills
 		existing.Project = card.Project
+		existing.Persona = card.Persona
 		existing.AskPolicy = card.AskPolicy
 		existing.LastSeen = r.now()
 		r.persistLocked()
@@ -191,6 +198,7 @@ func (r *Registry) Register(card Card, presentedSecret string) RegisterResult {
 		Capabilities: card.Capabilities,
 		Skills:       card.Skills,
 		Project:      card.Project,
+		Persona:      card.Persona,
 		AskPolicy:    card.AskPolicy,
 		LastSeen:     r.now(),
 	}

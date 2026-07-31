@@ -168,14 +168,21 @@ func (s *Server) ingest(id auth.Identity, req sendRequest) (*envelope.Envelope, 
 	// sender, and sending into a thread joins you to it.
 	to := req.To
 	if ts, exists := s.store.ThreadState(threadID, s.cfg.MaxThreadMessages); exists {
+		// Only the initiator decides (ADR-009); a participant recommends
+		// with kind:"proposal", which never closes the thread.
+		if req.Kind == "resolved" && ts.Initiator != "" && ts.Initiator != from {
+			return nil, http.StatusForbidden, fmt.Sprintf(
+				"only the initiator of thread %s (%s) may send kind \"resolved\" — send kind \"proposal\" to recommend a resolution instead",
+				threadID, ts.Initiator)
+		}
 		if ts.Resolved {
 			return nil, http.StatusConflict, fmt.Sprintf(
 				"thread %s is resolved: it was closed with kind \"resolved\" and cannot be reopened — start a new thread", threadID)
 		}
 		if s.cfg.MaxThreadMessages > 0 && ts.Count >= s.cfg.MaxThreadMessages {
 			return nil, http.StatusConflict, fmt.Sprintf(
-				"thread %s is stalled: it reached the per-thread cap of %d messages — raise maxThreadMessages in workwire.json (or WORKWIRE_MAX_THREAD_MESSAGES) or resolve it and start a new thread",
-				threadID, s.cfg.MaxThreadMessages)
+				"thread %s is stalled: it reached the per-thread cap of %d messages and is handed back to its initiator (%s) with the disagreement intact — raise maxThreadMessages in workwire.json (or WORKWIRE_MAX_THREAD_MESSAGES) to allow more rounds",
+				threadID, s.cfg.MaxThreadMessages, ts.Initiator)
 		}
 		if len(to) == 0 {
 			for _, m := range ts.Members {
@@ -226,7 +233,14 @@ func (s *Server) ingest(id auth.Identity, req sendRequest) (*envelope.Envelope, 
 // projection (hub-core R7).
 type delivered struct {
 	envelope.Envelope
-	Context []envelope.Envelope `json:"context,omitempty"`
+	Context []contextEntry `json:"context,omitempty"`
+}
+
+// contextEntry is a projected thread message plus the speaker's registered
+// persona, so a participant can weigh who said what (ADR-009).
+type contextEntry struct {
+	envelope.Envelope
+	Persona string `json:"persona,omitempty"`
 }
 
 // GET /inbox?agent=&since=&wait=&context= — the single receive shape
@@ -305,16 +319,20 @@ func (s *Server) handleInbox(w http.ResponseWriter, r *http.Request) {
 
 // projectContext returns the last n thread envelopes stamped kind:"context"
 // — background entries that never advance the cursor (hub-core R7).
-func (s *Server) projectContext(threadID string, n int) []envelope.Envelope {
+func (s *Server) projectContext(threadID string, n int) []contextEntry {
 	list, ok := s.store.Thread(threadID, n)
 	if !ok {
 		return nil
 	}
-	out := make([]envelope.Envelope, 0, len(list))
+	out := make([]contextEntry, 0, len(list))
 	for _, st := range list {
 		e := s.store.Render(st.Env)
 		e.Kind = "context"
-		out = append(out, e)
+		entry := contextEntry{Envelope: e}
+		if a, ok := s.registry.Get(e.From); ok {
+			entry.Persona = a.Persona
+		}
+		out = append(out, entry)
 	}
 	return out
 }

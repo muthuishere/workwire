@@ -361,8 +361,11 @@ func (s *Store) Inbox(agent string, since int64) (msgs []*Stored, next int64, re
 // ThreadState is the live view of a discussion (ADR-009): membership accrued
 // from participation, message count, and convergence state.
 type ThreadState struct {
-	ThreadID string   `json:"thread_id"`
-	Members  []string `json:"members"`
+	ThreadID string `json:"thread_id"`
+	// Initiator opened the thread and is the only member who may resolve it
+	// (ADR-009): participants surface perspectives, the initiator decides.
+	Initiator string   `json:"initiator"`
+	Members   []string `json:"members"`
 	Count    int      `json:"count"`
 	State    string   `json:"state"` // "open" | "resolved" | "stalled"
 	Resolved bool     `json:"-"`
@@ -385,6 +388,9 @@ func (s *Store) threadStateLocked(id string, cap int) (ThreadState, bool) {
 		}
 		seen[n] = true
 		ts.Members = append(ts.Members, n)
+	}
+	if len(list) > 0 {
+		ts.Initiator = list[0].Env.From
 	}
 	for _, st := range list {
 		add(st.Env.From)

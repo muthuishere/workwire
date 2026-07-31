@@ -1,5 +1,6 @@
 // workwire — HTTP-only message hub for the work between workers.
-// Verbs: serve, send, inbox, peers, ask, status, listen, answer, install, uninstall.
+// Verbs: serve, send, inbox, peers, ask, status, huddle, say, resolve, threads,
+// listen, answer, install, uninstall.
 package main
 
 import (
@@ -46,6 +47,14 @@ func main() {
 		err = cmdAsk(cfg, args)
 	case "status":
 		err = cmdStatus(cfg)
+	case "huddle":
+		err = cmdHuddle(cfg, args)
+	case "say":
+		err = cmdSay(cfg, args)
+	case "resolve":
+		err = cmdResolve(cfg, args)
+	case "threads":
+		err = cmdThreads(cfg, args)
 	case "listen":
 		err = cmdListen(cfg, args)
 	case "answer":
@@ -76,6 +85,10 @@ Usage:
   workwire peers                          list live agents + contacts
   workwire ask <agent> <question>         ask an agent and wait for the answer
   workwire status                         probe the hub /health
+  workwire huddle <name...> "<topic>"     open a discussion with several members; prints the thread id
+  workwire say <thread> "<text>"          contribute to a discussion (--proposal to recommend a resolution)
+  workwire resolve <thread> "<summary>"   close a discussion you opened (initiator only)
+  workwire threads                        list live discussions: id, state, count, members
   workwire listen --agent <name>          singleton listener: deliver inbound questions to the session inbox file
   workwire answer <id> <text>             answer a delivered question by its concrete envelope id
   workwire install --service --skills     one-line setup: hub as a background service + the agent skill

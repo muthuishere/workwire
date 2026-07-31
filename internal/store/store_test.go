@@ -144,3 +144,95 @@ func TestLastInbound(t *testing.T) {
 		t.Fatal("empty thread has no inbound")
 	}
 }
+
+// multi returns an envelope addressed to several recipients (ADR-009).
+func multi(from string, to []string, thread, text string) *envelope.Envelope {
+	return &envelope.Envelope{
+		ID: envelope.NewID("m"), From: from, To: envelope.Recipients(to),
+		ThreadID: thread, Text: text, TS: envelope.Now(),
+	}
+}
+
+func TestFanoutPerRecipientCursorsSurviveReplay(t *testing.T) {
+	dir := t.TempDir()
+	s := mustOpen(t, dir, Options{})
+	e := multi("alice", []string{"repoA", "repoB", "repoC"}, "t-1", "topic")
+	if _, err := s.Append(e); err != nil {
+		t.Fatal(err)
+	}
+	check := func(s *Store, label string) {
+		t.Helper()
+		seen := map[int64]bool{}
+		for _, name := range []string{"repoA", "repoB", "repoC"} {
+			msgs, next, reset := s.Inbox(name, 0)
+			if reset || len(msgs) != 1 {
+				t.Fatalf("%s/%s: want 1 message, got %d (reset=%v)", label, name, len(msgs), reset)
+			}
+			if msgs[0].Env.ID != e.ID {
+				t.Fatalf("%s/%s: envelope id must be shared", label, name)
+			}
+			if seen[next] {
+				t.Fatalf("%s/%s: cursor %d not per-recipient", label, name, next)
+			}
+			seen[next] = true
+			if more, _, _ := s.Inbox(name, next); len(more) != 0 {
+				t.Fatalf("%s/%s: redelivered after its own cursor", label, name)
+			}
+		}
+		if msgs, _, _ := s.Inbox("nobody", 0); len(msgs) != 0 {
+			t.Fatalf("%s: non-recipient received the envelope", label)
+		}
+	}
+	check(s, "live")
+	s.Close()
+	check(mustOpen(t, dir, Options{}), "replayed")
+}
+
+func TestThreadStateMembershipAndConvergence(t *testing.T) {
+	dir := t.TempDir()
+	s := mustOpen(t, dir, Options{})
+	if _, err := s.Append(multi("alice", []string{"repoA", "repoB"}, "t-1", "topic")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Append(multi("repoC", []string{"alice"}, "t-1", "joining")); err != nil {
+		t.Fatal(err)
+	}
+	for _, tc := range []struct {
+		name        string
+		cap         int
+		wantState   string
+		wantMembers int
+	}{
+		{"open under the cap", 24, "open", 4},
+		{"stalled at the cap", 2, "stalled", 4},
+		{"cap disabled", 0, "open", 4},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ts, ok := s.ThreadState("t-1", tc.cap)
+			if !ok {
+				t.Fatal("thread missing")
+			}
+			if ts.State != tc.wantState {
+				t.Fatalf("state: %s", ts.State)
+			}
+			if len(ts.Members) != tc.wantMembers {
+				t.Fatalf("members: %v", ts.Members)
+			}
+			if ts.Initiator != "alice" {
+				t.Fatalf("initiator: %q", ts.Initiator)
+			}
+		})
+	}
+	if _, err := s.Append(&envelope.Envelope{
+		ID: envelope.NewID("m"), From: "alice", To: envelope.Recipients{"repoA"},
+		ThreadID: "t-1", Kind: "resolved", Text: "done", TS: envelope.Now(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if ts, _ := s.ThreadState("t-1", 24); ts.State != "resolved" || !ts.Resolved {
+		t.Fatalf("resolved envelope did not close the thread: %+v", ts)
+	}
+	if all := s.Threads(24); len(all) != 1 || all[0].ThreadID != "t-1" {
+		t.Fatalf("Threads listing: %+v", all)
+	}
+}
