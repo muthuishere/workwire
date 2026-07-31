@@ -26,6 +26,7 @@ func cmdListen(cfg config.Config, args []string) error {
 	wait := fs.Int("wait", cfg.WaitDefault, "long-poll seconds")
 	ctxDepth := fs.Int("context", cfg.LastMessages, "context depth attached at read time")
 	persona := fs.String("persona", "", "short self-description sent at registration: who this worker is, what it owns, what it will not speak for")
+	maxRetries := fs.Int("max-retries", 0, "give up after N consecutive failed hub attempts (default 0 = retry forever)")
 	groups := fs.String("groups", "", "comma-separated audiences to join (default: the `groups:` line in this directory's AGENTS.md / CLAUDE.md)")
 	fs.Parse(args)
 	if *agent == "" {
@@ -76,13 +77,17 @@ func cmdListen(cfg config.Config, args []string) error {
 		Groups:     declared,
 		Heartbeat:  time.Duration(cfg.HeartbeatSeconds) * time.Second,
 		InboxPath:  *inbox,
+		MaxRetries: *maxRetries,
 		Logf:       logf,
 	})
 	if err != nil {
 		return err
 	}
+	// A hub that is down or restarting at startup is NOT fatal: Run retries
+	// registration on its own backoff. Only the local flock (above) or a
+	// signal ends this process.
 	if err := r.EnsureRegistered(); err != nil {
-		return err
+		logf("initial registration failed: %v — retrying in the background", err)
 	}
 	if r.AgentName() != *agent {
 		logf("registered as %s", r.AgentName())

@@ -7,8 +7,10 @@ package listen
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
@@ -47,6 +49,16 @@ type Options struct {
 	// size AND the consumer's persisted offset says it is fully consumed.
 	RotateMaxBytes int64
 	Logf           func(format string, args ...any)
+	// MaxRetries is the escape hatch: 0 (the default) means retry forever —
+	// the listener must never die because the hub blinked. A positive value
+	// gives up after that many consecutive failed attempts.
+	MaxRetries int
+	// BaseBackoff/MaxBackoff bound the exponential retry delay for transient
+	// conditions; ContendedBackoff is the slow cadence used when the lease is
+	// legitimately held by another host (don't hammer a live peer).
+	BaseBackoff      time.Duration
+	MaxBackoff       time.Duration
+	ContendedBackoff time.Duration
 }
 
 // State is the persisted poll cursor plus a bounded dedupe window of
@@ -68,6 +80,88 @@ type Runner struct {
 	sessDir   string
 	state     State
 	delivered map[string]bool
+	// cond is the last logged connection condition, so a long outage logs one
+	// line per state transition instead of one per attempt.
+	cond condition
+	// contendedUntil is the expiry the hub reported for a lease held by
+	// another host, used to retry on roughly lease cadence.
+	contendedUntil time.Time
+}
+
+// condition classifies why the listener is not currently connected. Every one
+// of them is recoverable: only a signal or the local flock ends the loop.
+type condition int
+
+const (
+	condOK         condition = iota // connected and polling
+	condUnreachable                 // hub down / restarting / network error
+	condLeaseLost                   // lease gone or the hub forgot it
+	condRejected                    // our credential or agent is unknown to the hub
+	condContended                   // another host legitimately holds the lease
+	condOther                       // anything else transient
+)
+
+func (c condition) String() string {
+	switch c {
+	case condOK:
+		return "connected"
+	case condUnreachable:
+		return "hub unreachable"
+	case condLeaseLost:
+		return "lease lost"
+	case condRejected:
+		return "credential rejected"
+	case condContended:
+		return "lease held elsewhere"
+	default:
+		return "hub error"
+	}
+}
+
+// hubError carries the HTTP status (0 = transport failure) so the run loop
+// can tell "hub is down" from "hub says you are nobody".
+type hubError struct {
+	Status int
+	Op     string
+	Msg    string
+	Err    error
+}
+
+func (e *hubError) Error() string {
+	if e.Status == 0 {
+		return fmt.Sprintf("%s: %v", e.Op, e.Err)
+	}
+	if e.Msg != "" {
+		return fmt.Sprintf("%s failed (%d): %s", e.Op, e.Status, e.Msg)
+	}
+	return fmt.Sprintf("%s failed (%d)", e.Op, e.Status)
+}
+
+func (e *hubError) Unwrap() error { return e.Err }
+
+// classify maps an error onto the condition the run loop reacts to.
+func classify(err error) condition {
+	var he *hubError
+	if !errors.As(err, &he) {
+		return condOther
+	}
+	switch {
+	case he.Status == 0:
+		return condUnreachable
+	case he.Status == http.StatusUnauthorized || he.Status == http.StatusForbidden:
+		return condRejected
+	case he.Status == http.StatusNotFound:
+		// The hub does not know this agent (data dir wiped, aged out) — for a
+		// lease call that also means the lease is gone with it.
+		return condRejected
+	case he.Status == http.StatusConflict || he.Status == http.StatusGone:
+		// A conflict while we still hold a leaseId usually means the hub
+		// forgot it (restart) and ours is dead; the run loop clears it and
+		// retries before concluding another host really is the listener.
+		return condLeaseLost
+	default:
+		return condOther
+	}
 }
 
 // New prepares a Runner: resolves paths and loads persisted state.
@@ -89,6 +183,15 @@ func New(opts Options) (*Runner, error) {
 	}
 	if opts.Logf == nil {
 		opts.Logf = func(string, ...any) {}
+	}
+	if opts.BaseBackoff <= 0 {
+		opts.BaseBackoff = time.Second
+	}
+	if opts.MaxBackoff <= 0 {
+		opts.MaxBackoff = 30 * time.Second
+	}
+	if opts.ContendedBackoff <= 0 {
+		opts.ContendedBackoff = 30 * time.Second
 	}
 	r := &Runner{
 		opts:      opts,
@@ -212,12 +315,22 @@ func (r *Runner) EnsureRegistered() error {
 		r.secret = c.AgentSecret
 		// Re-register/heartbeat with the stored secret: same identity.
 		card := r.card(r.agentName)
-		if code, err := r.do("POST", "/agents", r.secret, card, nil); err != nil {
-			return fmt.Errorf("re-register: %w", err)
-		} else if code != 200 && code != 201 {
-			return fmt.Errorf("re-register as %s failed (%d) — stored credentials may be stale", r.agentName, code)
+		code, err := r.do("POST", "/agents", r.secret, card, nil)
+		if err != nil {
+			return &hubError{Op: "re-register", Err: err}
 		}
-		return nil
+		switch {
+		case code == 200 || code == 201:
+			return nil
+		case code == 401 || code == 403 || code == 404:
+			// The hub no longer knows this credential (data dir wiped, agent
+			// aged out). Fall through to a fresh registration rather than
+			// dying: the persisted cursor is keyed by name and survives.
+			r.opts.Logf("stored credential for %s rejected (%d) — re-registering", r.agentName, code)
+			r.secret = ""
+		default:
+			return &hubError{Op: "re-register", Status: code}
+		}
 	}
 	name := r.agentName
 	for attempt := 0; attempt < 5; attempt++ {
@@ -229,7 +342,7 @@ func (r *Runner) EnsureRegistered() error {
 		}
 		code, err := r.do("POST", "/agents", r.opts.AdminToken, r.card(name), &out)
 		if err != nil {
-			return fmt.Errorf("register: %w", err)
+			return &hubError{Op: "register", Err: err}
 		}
 		switch code {
 		case 201:
@@ -243,7 +356,7 @@ func (r *Runner) EnsureRegistered() error {
 			r.opts.Logf("name %q taken; registering as %q", name, out.Suggestion)
 			name = out.Suggestion
 		default:
-			return fmt.Errorf("register failed (%d): %s", code, out.Error)
+			return &hubError{Op: "register", Status: code, Msg: out.Error}
 		}
 	}
 	return fmt.Errorf("could not register: every suggested name was taken")
@@ -316,16 +429,22 @@ func (r *Runner) AcquireLease() error {
 	code, err := r.do("POST", "/agents/"+url.PathEscape(r.agentName)+"/listen-lease",
 		r.secret, map[string]string{"leaseId": r.leaseID}, &out)
 	if err != nil {
-		return err
+		return &hubError{Op: "lease acquire", Err: err}
 	}
 	switch code {
 	case 200:
 		r.leaseID = out.LeaseID
+		r.contendedUntil = time.Time{}
 		return nil
 	case 409:
-		return fmt.Errorf("listen lease for %s is held elsewhere (expires %s) — another host is the listener", r.agentName, out.ExpiresAt)
+		r.contendedUntil = time.Time{}
+		if t, perr := time.Parse(time.RFC3339Nano, out.ExpiresAt); perr == nil {
+			r.contendedUntil = t
+		}
+		return &hubError{Op: "lease acquire", Status: 409,
+			Msg: fmt.Sprintf("listen lease for %s is held elsewhere (expires %s)", r.agentName, out.ExpiresAt)}
 	default:
-		return fmt.Errorf("lease acquire failed (%d)", code)
+		return &hubError{Op: "lease acquire", Status: code}
 	}
 }
 
@@ -354,10 +473,10 @@ func (r *Runner) PollOnce() (int, error) {
 	}
 	code, err := r.do("GET", "/inbox?"+q.Encode(), r.secret, nil, &out)
 	if err != nil {
-		return 0, err
+		return 0, &hubError{Op: "inbox poll", Err: err}
 	}
 	if code != 200 {
-		return 0, fmt.Errorf("inbox poll failed (%d)", code)
+		return 0, &hubError{Op: "inbox poll", Status: code}
 	}
 	if out.Reset {
 		// Cursor outside retained history: adopt the hub's cursor as
@@ -439,24 +558,158 @@ func (r *Runner) maybeRotate() {
 	r.opts.Logf("rotated inbox file (%d bytes fully consumed)", fi.Size())
 }
 
-// Run is the loop: lease renewal on a ticker, long-polls in between, until
-// stop is closed. Graceful shutdown releases the lease.
-func (r *Runner) Run(stop <-chan struct{}) error {
-	if err := r.AcquireLease(); err != nil {
-		return err
+// connect makes the listener usable: registered (recovering the credential if
+// the hub rejected it) and holding the listen lease.
+func (r *Runner) connect() error {
+	if r.secret == "" {
+		if err := r.EnsureRegistered(); err != nil {
+			return err
+		}
 	}
+	return r.AcquireLease()
+}
+
+// backoffFor is the delay before the next attempt: exponential with jitter for
+// transient conditions, roughly lease cadence for legitimate contention (a
+// live peer must not be hammered — this listener just waits its turn).
+func (r *Runner) backoffFor(c condition, attempt int) time.Duration {
+	if c == condContended {
+		d := r.opts.ContendedBackoff
+		if !r.contendedUntil.IsZero() {
+			if until := time.Until(r.contendedUntil); until > 0 && until < d {
+				d = until + time.Second
+			}
+		}
+		return jitter(d)
+	}
+	d := r.opts.BaseBackoff
+	for i := 1; i < attempt && d < r.opts.MaxBackoff; i++ {
+		d *= 2
+	}
+	if d > r.opts.MaxBackoff {
+		d = r.opts.MaxBackoff
+	}
+	return jitter(d)
+}
+
+// jitter spreads retries by ±25% so many listeners don't stampede a hub that
+// just came back.
+func jitter(d time.Duration) time.Duration {
+	if d <= 0 {
+		return d
+	}
+	delta := time.Duration(rand.Int63n(int64(d/2) + 1))
+	return d - d/4 + delta
+}
+
+// note logs a condition change once — an hour-long outage is one line, not
+// eighteen hundred.
+func (r *Runner) note(c condition, err error) {
+	if c == r.cond {
+		return
+	}
+	r.cond = c
+	if c == condOK {
+		r.opts.Logf("hub reachable again — listening as %s", r.agentName)
+		return
+	}
+	r.opts.Logf("%s: %v — retrying (the listener does not exit)", c, err)
+}
+
+// errStopped is the internal signal that the stop channel fired mid-backoff;
+// it is never returned to the caller (a signalled shutdown is not an error).
+var errStopped = errors.New("listener stopped")
+
+// stopErr maps the internal sentinel back to a clean nil exit.
+func stopErr(err error) error {
+	if errors.Is(err, errStopped) {
+		return nil
+	}
+	return err
+}
+
+// sleep waits d, or returns false if the listener was asked to stop.
+func sleep(stop <-chan struct{}, d time.Duration) bool {
+	select {
+	case <-stop:
+		return false
+	case <-time.After(d):
+		return true
+	}
+}
+
+// Run is the loop: connect (register + lease), renew on a ticker, long-poll in
+// between, until stop is closed. It NEVER exits on a transient condition —
+// hub down, hub restarted, lease forgotten, credential rejected are all
+// retried forever with backoff. Only a signal (stop) ends it, and graceful
+// shutdown releases the lease.
+func (r *Runner) Run(stop <-chan struct{}) error {
 	defer r.ReleaseLease()
-	r.JoinDeclaredGroups()
-	r.opts.Logf("listening as %s (inbox file %s)", r.agentName, r.InboxPath())
+	connected := false
+	attempt := 0
 	renew := time.NewTicker(r.opts.Heartbeat)
 	defer renew.Stop()
+
+	// fail records a recoverable condition and waits out its backoff. It
+	// returns nil to keep looping, errStopped when the listener was signalled,
+	// or the underlying error when --max-retries was exhausted.
+	fail := func(err error) error {
+		attempt++
+		c := classify(err)
+		if c == condLeaseLost {
+			if r.leaseID != "" {
+				// Our leaseId may be the reason the hub said no; drop it and
+				// re-acquire from scratch on the next attempt.
+				r.leaseID = ""
+			} else {
+				c = condContended
+			}
+		}
+		if c == condRejected {
+			// Re-run the registration path from scratch on the next attempt;
+			// the persisted cursor is keyed by name and is not touched.
+			r.secret = ""
+		}
+		connected = false
+		r.note(c, err)
+		if r.opts.MaxRetries > 0 && attempt >= r.opts.MaxRetries {
+			r.opts.Logf("giving up after %d attempts (--max-retries)", attempt)
+			return err
+		}
+		if !sleep(stop, r.backoffFor(c, attempt)) {
+			return errStopped
+		}
+		return nil
+	}
+
 	for {
+		select {
+		case <-stop:
+			return nil
+		default:
+		}
+		if !connected {
+			if err := r.connect(); err != nil {
+				if ferr := fail(err); ferr != nil {
+					return stopErr(ferr)
+				}
+				continue
+			}
+			connected = true
+			attempt = 0
+			r.note(condOK, nil)
+			r.JoinDeclaredGroups()
+			r.opts.Logf("listening as %s (inbox file %s)", r.agentName, r.InboxPath())
+		}
 		select {
 		case <-stop:
 			return nil
 		case <-renew.C:
 			if err := r.AcquireLease(); err != nil {
-				return fmt.Errorf("lease lost: %w", err)
+				if ferr := fail(err); ferr != nil {
+					return stopErr(ferr)
+				}
+				continue
 			}
 			// Provenance is refreshed on every heartbeat: people switch
 			// branches mid-session (ADR-011 §1).
@@ -467,13 +720,14 @@ func (r *Runner) Run(stop <-chan struct{}) error {
 		}
 		n, err := r.PollOnce()
 		if err != nil {
-			r.opts.Logf("poll error: %v (retrying)", err)
-			select {
-			case <-stop:
-				return nil
-			case <-time.After(2 * time.Second):
+			if ferr := fail(err); ferr != nil {
+				return stopErr(ferr)
 			}
 			continue
+		}
+		attempt = 0
+		if r.cond != condOK {
+			r.note(condOK, nil)
 		}
 		if n > 0 {
 			r.opts.Logf("delivered %d envelope(s)", n)
