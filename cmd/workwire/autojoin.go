@@ -36,8 +36,9 @@ const (
 
 // skillConfig is ~/.config/workwire/skill.json.
 type skillConfig struct {
-	// AutoJoin is on by default: the point is that a session is reachable
-	// without anyone doing anything.
+	// AutoJoin is OFF by default. Joining every session in every folder is a
+	// real blast radius (a peer name per folder, `@all` wakes them all), so it
+	// is opted into deliberately with `workwire install --auto`.
 	AutoJoin bool `json:"autoJoin"`
 	// AgentName pins the peer name; empty means "derive from the folder".
 	AgentName string `json:"agentName"`
@@ -53,10 +54,10 @@ func skillConfigPath(cfg config.Config) string {
 }
 
 // loadSkillConfig reads skill.json. A missing OR corrupt file is not an error
-// anywhere this is used: the caller is a session-start hook, and the honest
-// default is "on".
+// anywhere this is used: the caller is a session-start hook, and the safe
+// default is "off" — we never join on a file we could not read.
 func loadSkillConfig(path string) skillConfig {
-	sc := skillConfig{AutoJoin: true}
+	sc := skillConfig{AutoJoin: false}
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return sc
@@ -65,9 +66,9 @@ func loadSkillConfig(path string) skillConfig {
 	return sc
 }
 
-// ensureSkillConfig creates skill.json with auto-join ON when it does not
+// ensureSkillConfig creates skill.json with auto-join OFF when it does not
 // exist. An existing file is NEVER overwritten — a re-install must not undo
-// somebody's `--off`.
+// somebody's `--off`, nor silently re-enable a join they turned on.
 func ensureSkillConfig(path string) (bool, error) {
 	if _, err := os.Stat(path); err == nil {
 		return false, nil
@@ -75,7 +76,7 @@ func ensureSkillConfig(path string) (bool, error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return false, err
 	}
-	b, _ := json.MarshalIndent(skillConfig{AutoJoin: true}, "", "  ")
+	b, _ := json.MarshalIndent(skillConfig{AutoJoin: false}, "", "  ")
 	return true, os.WriteFile(path, append(b, '\n'), 0o644)
 }
 

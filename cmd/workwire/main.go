@@ -108,9 +108,9 @@ Usage:
   workwire reopen <thread> "<reason>"     reopen a resolved or stalled thread (humans only)
   workwire listen --agent <name>          singleton listener: deliver inbound questions to the session inbox file
   workwire answer <id> <text>             answer a delivered question by its concrete envelope id
-  workwire install --all                  one-line setup: service + skill + auto-join hook
-  workwire install --service --skills     hub as a background service + the agent skill
-  workwire install --auto                 auto-join: SessionStart hook so every session joins its own folder
+  workwire install --service --skills     recommended setup: hub as a background service + the agent skill
+  workwire install --all                  the above PLUS opt-in auto-join
+  workwire install --auto                 opt in to auto-join: a SessionStart hook so EVERY session joins its own folder
   workwire install --skills --off         turn auto-join off (config only; --on turns it back on)
   workwire session-start                  the SessionStart hook entrypoint: joins this folder, always exits 0
   workwire install --skills               install the two-way agent skill only (~/.claude/skills/workwire)
@@ -122,7 +122,7 @@ The service is optional: without it, run "workwire serve" yourself or let a
 loopback peer auto-start the hub.
 
 Config: ~/.config/workwire/workwire.json (hub, auto-created); WORKWIRE_* env overrides every key.
-Client config: ~/.config/workwire/skill.json ({"autoJoin":true,"agentName":"","hubUrl":""}).
+Client config: ~/.config/workwire/skill.json ({"autoJoin":false,"agentName":"","hubUrl":""}).
 `)
 }
 

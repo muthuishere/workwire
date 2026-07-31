@@ -113,8 +113,9 @@ func mustRead(t *testing.T, path string) []byte {
 	return b
 }
 
-// skill.json is created once, auto-join ON, and never overwritten: a
-// deliberate `--off` must survive a re-install.
+// skill.json is created once, auto-join OFF (its blast radius is opted into,
+// never inherited), and never overwritten: a deliberate `--on` or `--off` must
+// survive a re-install.
 func TestSkillConfigCreatedOnceAndTogglesOneKey(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "skill.json")
@@ -123,19 +124,23 @@ func TestSkillConfigCreatedOnceAndTogglesOneKey(t *testing.T) {
 	if err != nil || !created {
 		t.Fatalf("first ensure: created=%v err=%v", created, err)
 	}
-	if !loadSkillConfig(path).AutoJoin {
-		t.Fatal("auto-join should default to on")
+	if loadSkillConfig(path).AutoJoin {
+		t.Fatal("auto-join should default to off")
+	}
+	// A missing file is off too: we never join on a config we could not read.
+	if loadSkillConfig(filepath.Join(dir, "absent.json")).AutoJoin {
+		t.Fatal("a missing skill.json must not mean auto-join on")
 	}
 
 	// A user edit plus an unknown key, then a re-install.
-	if err := os.WriteFile(path, []byte(`{"autoJoin":false,"agentName":"api","future":"keep me"}`), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(`{"autoJoin":true,"agentName":"api","future":"keep me"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	created, err = ensureSkillConfig(path)
 	if err != nil || created {
 		t.Fatalf("re-install must not recreate: created=%v err=%v", created, err)
 	}
-	if sc := loadSkillConfig(path); sc.AutoJoin || sc.AgentName != "api" {
+	if sc := loadSkillConfig(path); !sc.AutoJoin || sc.AgentName != "api" {
 		t.Fatalf("re-install clobbered the config: %+v", sc)
 	}
 

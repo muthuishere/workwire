@@ -23,9 +23,12 @@ const installUsage = `usage: workwire install [--service] [--skills] [--auto] [-
 
   --skills    install the two-way agent skill (default ~/.claude/skills/workwire)
   --service   run the hub as a background service (launchd / systemd --user / sc.exe)
-  --auto      auto-join: a SessionStart hook so every session joins its own folder
-  --all       all three of the above — the one-line setup
+  --auto      OPT-IN auto-join: a SessionStart hook so EVERY session joins its own folder
+  --all       all three of the above (including opt-in auto-join)
   --on/--off  flip auto-join in skill.json without reinstalling anything
+
+The recommended setup is ` + "`--service --skills`" + `. Auto-join is off by default and
+` + "`--auto`" + ` turns it on for every session in every folder.
 
 The service is OPTIONAL (ADR-001): without it the hub still auto-starts on
 loopback or runs in the foreground with ` + "`workwire serve`" + `.
@@ -131,8 +134,8 @@ func installSkills(cfg config.Config, dir string) error {
 	for _, p := range written {
 		fmt.Printf("installed %s\n", p)
 	}
-	// The client-side config is created ONCE, auto-join on. Re-installing
-	// never overwrites it: a deliberate `--off` must survive an upgrade.
+	// The client-side config is created ONCE, auto-join OFF. Re-installing
+	// never overwrites it: a deliberate `--on`/`--off` must survive an upgrade.
 	created, err := ensureSkillConfig(skillConfigPath(cfg))
 	if err != nil {
 		return err
@@ -147,6 +150,9 @@ func installSkills(cfg config.Config, dir string) error {
 
 // installAutoJoinHook writes the SessionStart hook that runs
 // `workwire session-start` — one verb, no shell logic in settings.json.
+//
+// Auto-join is OFF by default, so `--auto` is the deliberate opt-in: it both
+// installs the hook and turns the key on, and it states the cost plainly.
 func installAutoJoinHook(cfg config.Config, settings string) error {
 	path, err := autoJoinSettingsPath(settings)
 	if err != nil {
@@ -158,7 +164,14 @@ func installAutoJoinHook(cfg config.Config, settings string) error {
 	if _, err := ensureSkillConfig(skillConfigPath(cfg)); err != nil {
 		return err
 	}
+	if err := setAutoJoin(skillConfigPath(cfg), true); err != nil {
+		return err
+	}
 	fmt.Printf("auto-join hook: SessionStart -> `%s` in %s\n", autoJoinCommand, path)
+	fmt.Print("\nauto-join is now ON. What that means:\n" +
+		"  - every session you start, in every folder, joins the hub as a peer named after that folder\n" +
+		"  - each joined session is in `@all`, so a broad discussion wakes all of them\n" +
+		"  - `workwire install --skills --off` turns it off instantly; the hook can stay installed\n\n")
 	return nil
 }
 
