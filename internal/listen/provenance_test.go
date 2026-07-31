@@ -106,9 +106,9 @@ func gitRepo(t *testing.T, remote string) string {
 }
 
 // seedCredential makes the runner believe it has registered before.
-func seedCredential(t *testing.T, configDir, name, secret string) {
+func seedCredential(t *testing.T, configDir, hubURL, name, secret string) {
 	t.Helper()
-	if err := SaveCredential(configDir, name, Credential{AgentID: "ag_1", AgentSecret: secret}); err != nil {
+	if err := SaveCredential(configDir, hubURL, name, Credential{AgentID: "ag_1", AgentSecret: secret}); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -161,7 +161,7 @@ func TestReRegisterFromSameDirIsIdempotent(t *testing.T) {
 	}
 	h := newIdentityHub(t, stored)
 	cfgDir := t.TempDir()
-	seedCredential(t, cfgDir, "peer", h.secret)
+	seedCredential(t, cfgDir, h.baseURL, "peer", h.secret)
 	r, err := New(Options{
 		Agent: "peer", HubURL: h.baseURL, ConfigDir: cfgDir,
 		OriginDir: dir,
@@ -218,7 +218,7 @@ func TestRepoMismatchWarnsButBranchChangeDoesNot(t *testing.T) {
 				"name": "peer", "persona": "stored persona", "origin": c.storedIn,
 			})
 			cfgDir := t.TempDir()
-			seedCredential(t, cfgDir, "peer", h.secret)
+			seedCredential(t, cfgDir, h.baseURL, "peer", h.secret)
 			var logs []string
 			r, err := New(Options{
 				Agent: "peer", HubURL: h.baseURL, ConfigDir: cfgDir, OriginDir: dir,
@@ -265,7 +265,7 @@ func TestExplicitPersonaStillWins(t *testing.T) {
 		"origin": map[string]any{"repo": "acme/widget", "branch": "main", "cwd": dir},
 	})
 	cfgDir := t.TempDir()
-	seedCredential(t, cfgDir, "peer", h.secret)
+	seedCredential(t, cfgDir, h.baseURL, "peer", h.secret)
 	r, err := New(Options{
 		Agent: "peer", HubURL: h.baseURL, ConfigDir: cfgDir, OriginDir: dir,
 		Persona: "stated on the command line", PersonaExplicit: true,

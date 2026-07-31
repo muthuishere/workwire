@@ -157,3 +157,41 @@ treatable as untrusted data. (ADR-007, ADR-006.)
 - GIVEN an agent that registered with an explicit tools opt-in
 - WHEN it answers inbound questions
 - THEN the relaxed posture applies only to that agent's own declared opt-in — never inferred from the asker or the message content
+
+### R10: The system SHALL scope client credentials to the hub that issued them: the locally minted admin token SHALL be sent ONLY to a loopback `hubUrl`, `credentials.json` SHALL be keyed by hub, and a non-loopback hub with no credential of its own SHALL fail with an error naming the env var to set — never a fallback to the local token.
+
+The `admin-token` file (R2) is a credential for the hub on THIS machine. `hubUrl` is a
+persisted client setting (ADR-006) and an env override, so pointing a client at another host
+must never hand that host admin on the local hub — not even on the unauthenticated `/health`
+probe (R7). Per-agent secrets (R3) are issued by one hub and are meaningless to any other, so
+they are stored under a normalised hub origin (every loopback spelling is one hub) with the
+agent name inside. Credentials predating hub-keying are migrated in place to the local
+loopback hub — the only hub that could have issued them — losing nothing.
+
+#### Scenario: loopback hub gets the local admin token
+- GIVEN `hubUrl` is `http://127.0.0.1:14411`, `http://localhost:14411` or `http://[::1]:14411` AND the token env var is unset
+- WHEN any client verb runs
+- THEN the request carries the 0600 `admin-token` file's value as `Authorization: Bearer`
+
+#### Scenario: remote hub never receives the local admin token
+- GIVEN `hubUrl` names a non-loopback host AND the token env var is unset
+- WHEN any client verb runs — including a bare `status` / `GET /health` probe
+- THEN NO request is made and the verb fails with an error naming `hubUrl` and the env var to set
+- AND the `admin-token` file's bytes never appear on the wire
+
+#### Scenario: the env-named token is the remote credential
+- GIVEN `hubUrl` names a remote host AND the env var named by `tokenEnv` holds a token issued by that hub
+- WHEN a client verb runs
+- THEN that token is used, and the local admin token is not consulted
+
+#### Scenario: per-agent secrets are selected by hub
+- GIVEN agent `api` has a stored secret from the local hub AND a different stored secret from a remote hub
+- WHEN a verb runs `--as api` against each hub in turn
+- THEN each hub receives only the secret it issued
+- AND registering against one hub never overwrites the credential stored for the other
+
+#### Scenario: a legacy name-keyed credentials.json is migrated silently
+- GIVEN a `credentials.json` written before hub-keying — a flat `{name: {agentId, agentSecret}}` map
+- WHEN any client reads credentials
+- THEN every entry is preserved under the local loopback hub and the file is rewritten in the hub-keyed shape with mode `0600`
+- AND a remote hub is offered none of those entries

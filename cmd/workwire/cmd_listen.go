@@ -6,12 +6,11 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strings"
 	"syscall"
 	"time"
 
-	"github.com/muthuishere/workwire/internal/auth"
 	"github.com/muthuishere/workwire/internal/config"
+	"github.com/muthuishere/workwire/internal/hubaddr"
 	"github.com/muthuishere/workwire/internal/listen"
 	persona_ "github.com/muthuishere/workwire/internal/persona"
 )
@@ -64,10 +63,22 @@ func cmdListen(cfg config.Config, args []string) error {
 	}
 	defer lock.Release()
 
+	// Registration bootstrap credential. The locally minted admin token is a
+	// credential for the LOCAL hub and never leaves it (auth R10): against a
+	// remote hub only the env-named token counts, and if we hold neither that
+	// nor a secret that hub already issued us, say so instead of trying.
 	adminToken := cfg.TokenFromEnv()
 	if adminToken == "" {
-		if b, err := os.ReadFile(filepath.Join(cfg.ConfigDir, auth.TokenFileName)); err == nil {
-			adminToken = strings.TrimSpace(string(b))
+		if hubaddr.IsLoopback(cfg.HubURL) {
+			adminToken = localAdminToken(cfg)
+		} else {
+			creds, cerr := listen.LoadCredentials(cfg.ConfigDir, cfg.HubURL)
+			if cerr != nil {
+				return cerr
+			}
+			if _, ok := creds[*agent]; !ok {
+				return remoteHubNoCredential(cfg)
+			}
 		}
 	}
 	logf := func(format string, a ...any) {

@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/muthuishere/workwire/internal/hubaddr"
 	"github.com/muthuishere/workwire/internal/origin"
 	"github.com/muthuishere/workwire/internal/registry"
 )
@@ -317,7 +318,7 @@ func (r *Runner) do(method, path, token string, body any, out any) (int, error) 
 // name conflict adopts the hub's suggestion (agent-skill R3) — never a
 // silent takeover.
 func (r *Runner) EnsureRegistered() error {
-	creds, err := LoadCredentials(r.opts.ConfigDir)
+	creds, err := LoadCredentials(r.opts.ConfigDir, r.opts.HubURL)
 	if err != nil {
 		return err
 	}
@@ -361,7 +362,7 @@ func (r *Runner) EnsureRegistered() error {
 		case 201:
 			r.adoptName(name)
 			r.secret = out.AgentSecret
-			return SaveCredential(r.opts.ConfigDir, name, Credential{AgentID: out.AgentID, AgentSecret: out.AgentSecret})
+			return SaveCredential(r.opts.ConfigDir, r.opts.HubURL, name, Credential{AgentID: out.AgentID, AgentSecret: out.AgentSecret})
 		case 409:
 			if out.Suggestion == "" {
 				return fmt.Errorf("name %q taken and no suggestion offered", name)
@@ -838,36 +839,110 @@ type Credential struct {
 	AgentSecret string `json:"agentSecret"`
 }
 
-// LoadCredentials reads the credentials map; a missing file is empty.
-func LoadCredentials(configDir string) (map[string]Credential, error) {
-	b, err := os.ReadFile(filepath.Join(configDir, "credentials.json"))
+// credentialsFile is the on-disk shape. A per-agent secret is issued BY a hub
+// and means nothing to any other hub, so entries are keyed by hub first
+// (auth R10): pointing `hubUrl` elsewhere must never present the local hub's
+// secret to a stranger, and must never clobber the local one on the way back.
+//
+// Version 1 (name-keyed, flat) is migrated in place on first read.
+type credentialsFile struct {
+	Version int                              `json:"version"`
+	Hubs    map[string]map[string]Credential `json:"hubs"`
+}
+
+func credentialsPath(configDir string) string {
+	return filepath.Join(configDir, "credentials.json")
+}
+
+// LocalHubKey is the hub a legacy (name-keyed) credentials.json is assumed to
+// have been issued by: the configured hub when it is loopback, otherwise the
+// default local hub. Legacy entries were minted by whatever hub was running on
+// this machine, so they belong to loopback — never to a remote hub someone has
+// since pointed `hubUrl` at.
+func LocalHubKey(hubURL string) string {
+	if hubaddr.IsLoopback(hubURL) {
+		return hubaddr.Key(hubURL)
+	}
+	return hubaddr.Key(defaultLocalHub)
+}
+
+const defaultLocalHub = "http://127.0.0.1:14411"
+
+// readCredentialsFile loads the file in either shape, migrating a legacy
+// name-keyed file to the hub-keyed shape and writing it back. Migration is
+// silent and lossless: every existing entry is preserved under the local
+// loopback hub, which is the only hub that could have issued it.
+func readCredentialsFile(configDir, hubURL string) (credentialsFile, error) {
+	cf := credentialsFile{Version: 2, Hubs: map[string]map[string]Credential{}}
+	b, err := os.ReadFile(credentialsPath(configDir))
 	if err != nil {
 		if os.IsNotExist(err) {
-			return map[string]Credential{}, nil
+			return cf, nil
 		}
+		return cf, err
+	}
+	var probe map[string]json.RawMessage
+	if err := json.Unmarshal(b, &probe); err != nil {
+		return cf, fmt.Errorf("parse credentials.json: %w", err)
+	}
+	if _, hubKeyed := probe["hubs"]; hubKeyed {
+		if err := json.Unmarshal(b, &cf); err != nil {
+			return cf, fmt.Errorf("parse credentials.json: %w", err)
+		}
+		if cf.Hubs == nil {
+			cf.Hubs = map[string]map[string]Credential{}
+		}
+		return cf, nil
+	}
+	// Legacy: a flat {name: {agentId, agentSecret}} map.
+	legacy := map[string]Credential{}
+	if err := json.Unmarshal(b, &legacy); err != nil {
+		return cf, fmt.Errorf("parse credentials.json: %w", err)
+	}
+	if len(legacy) > 0 {
+		cf.Hubs[LocalHubKey(hubURL)] = legacy
+		_ = writeCredentialsFile(configDir, cf) // best effort; nothing is lost if it fails
+	}
+	return cf, nil
+}
+
+func writeCredentialsFile(configDir string, cf credentialsFile) error {
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		return err
+	}
+	cf.Version = 2
+	b, err := json.MarshalIndent(cf, "", "  ")
+	if err != nil {
+		return err
+	}
+	return writeFileAtomic(credentialsPath(configDir), append(b, '\n'), 0o600)
+}
+
+// LoadCredentials reads the credentials this hub issued; a missing file (or a
+// hub we hold nothing for) is empty.
+func LoadCredentials(configDir, hubURL string) (map[string]Credential, error) {
+	cf, err := readCredentialsFile(configDir, hubURL)
+	if err != nil {
 		return nil, err
 	}
-	out := map[string]Credential{}
-	if err := json.Unmarshal(b, &out); err != nil {
-		return nil, fmt.Errorf("parse credentials.json: %w", err)
+	out := cf.Hubs[hubaddr.Key(hubURL)]
+	if out == nil {
+		return map[string]Credential{}, nil
 	}
 	return out, nil
 }
 
-// SaveCredential merges one entry and writes the file with mode 0600
-// (agent-skill R3). Secret values are never logged.
-func SaveCredential(configDir, name string, c Credential) error {
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		return err
-	}
-	creds, err := LoadCredentials(configDir)
+// SaveCredential merges one entry under its issuing hub and writes the file
+// with mode 0600 (agent-skill R3). Secret values are never logged.
+func SaveCredential(configDir, hubURL, name string, c Credential) error {
+	cf, err := readCredentialsFile(configDir, hubURL)
 	if err != nil {
 		return err
 	}
-	creds[name] = c
-	b, err := json.MarshalIndent(creds, "", "  ")
-	if err != nil {
-		return err
+	key := hubaddr.Key(hubURL)
+	if cf.Hubs[key] == nil {
+		cf.Hubs[key] = map[string]Credential{}
 	}
-	return writeFileAtomic(filepath.Join(configDir, "credentials.json"), append(b, '\n'), 0o600)
+	cf.Hubs[key][name] = c
+	return writeCredentialsFile(configDir, cf)
 }

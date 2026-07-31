@@ -19,6 +19,8 @@ import (
 	"github.com/muthuishere/workwire/internal/auth"
 	"github.com/muthuishere/workwire/internal/config"
 	"github.com/muthuishere/workwire/internal/contacts"
+	"github.com/muthuishere/workwire/internal/hubaddr"
+	"github.com/muthuishere/workwire/internal/listen"
 	"github.com/muthuishere/workwire/internal/origin"
 	"github.com/muthuishere/workwire/internal/registry"
 	"github.com/muthuishere/workwire/internal/server"
@@ -191,47 +193,87 @@ type client struct {
 	base  string
 	token string
 	http  *http.Client
+	// authErr explains why this client has no credential for the configured
+	// hub. It is returned INSTEAD of sending a request, so a remote hub is
+	// never handed a token that was not issued for it (auth R10).
+	authErr error
 }
 
+// localAdminToken reads the 0600 admin-token file. It is a credential for the
+// LOCAL hub only — the caller decides whether it may be used.
+func localAdminToken(cfg config.Config) string {
+	if cfg.ConfigDir == "" {
+		return ""
+	}
+	b, err := os.ReadFile(filepath.Join(cfg.ConfigDir, auth.TokenFileName))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
+// remoteHubNoCredential is the actionable failure for a non-loopback hubUrl
+// with no credential supplied for it.
+func remoteHubNoCredential(cfg config.Config) error {
+	name := cfg.TokenEnv
+	if name == "" {
+		name = "WORKWIRE_TOKEN"
+	}
+	return fmt.Errorf("hubUrl %s is not loopback and no credential is available for it: "+
+		"set $%s to a token issued by that hub (the local admin token is NEVER sent to a remote hub), "+
+		"or run a verb with --as <name> once this peer is registered there", cfg.HubURL, name)
+}
+
+// newClient resolves the outbound credential for the configured hub.
+//
+//   - The env var NAMED by tokenEnv wins everywhere: it is a credential the
+//     operator supplied for THIS hub, deliberately.
+//   - The locally minted admin token is attached ONLY when hubUrl is loopback.
+//   - A non-loopback hub with neither gets no token and a stored error, so the
+//     first request fails with an actionable message rather than leaking.
 func newClient(cfg config.Config) *client {
-	token := cfg.TokenFromEnv()
-	if token == "" && cfg.ConfigDir != "" {
-		if b, err := os.ReadFile(filepath.Join(cfg.ConfigDir, auth.TokenFileName)); err == nil {
-			token = strings.TrimSpace(string(b))
-		}
+	c := &client{
+		base: strings.TrimSuffix(cfg.HubURL, "/"),
+		http: &http.Client{Timeout: 90 * time.Second},
 	}
-	return &client{
-		base:  strings.TrimSuffix(cfg.HubURL, "/"),
-		token: token,
-		http:  &http.Client{Timeout: 90 * time.Second},
+	if token := cfg.TokenFromEnv(); token != "" {
+		c.token = token
+		return c
 	}
+	if hubaddr.IsLoopback(cfg.HubURL) {
+		c.token = localAdminToken(cfg)
+		return c
+	}
+	c.authErr = remoteHubNoCredential(cfg)
+	return c
 }
 
-// asAgent switches the client to a per-agent secret from credentials.json.
+// asAgent switches the client to the per-agent secret this hub issued.
+// credentials.json is keyed by hub: a secret minted by the local hub means
+// nothing to a remote one and is never presented to it.
 func (c *client) asAgent(cfg config.Config, name string) error {
 	if cfg.ConfigDir == "" {
 		return fmt.Errorf("no config dir for credentials")
 	}
-	b, err := os.ReadFile(filepath.Join(cfg.ConfigDir, "credentials.json"))
+	creds, err := listen.LoadCredentials(cfg.ConfigDir, cfg.HubURL)
 	if err != nil {
-		return fmt.Errorf("read credentials.json: %w", err)
-	}
-	var creds map[string]struct {
-		AgentID     string `json:"agentId"`
-		AgentSecret string `json:"agentSecret"`
-	}
-	if err := json.Unmarshal(b, &creds); err != nil {
 		return err
 	}
 	entry, ok := creds[name]
 	if !ok {
-		return fmt.Errorf("no stored credentials for agent %q", name)
+		return fmt.Errorf("no stored credentials for agent %q on hub %s", name, cfg.HubURL)
 	}
 	c.token = entry.AgentSecret
+	c.authErr = nil
 	return nil
 }
 
 func (c *client) do(method, path string, body any, out any) (int, error) {
+	if c.token == "" && c.authErr != nil {
+		// Fail before the connection: a bare reachability probe must not be the
+		// thing that hands a stranger a credential.
+		return 0, c.authErr
+	}
 	var rd io.Reader
 	if body != nil {
 		b, err := json.Marshal(body)

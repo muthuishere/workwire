@@ -74,7 +74,7 @@ func cmdJoin(cfg config.Config, args []string) error {
 		card["persona"] = *persona
 	}
 
-	creds, err := listen.LoadCredentials(cfg.ConfigDir)
+	creds, err := listen.LoadCredentials(cfg.ConfigDir, cfg.HubURL)
 	if err != nil {
 		return err
 	}
@@ -107,7 +107,7 @@ func cmdJoin(cfg config.Config, args []string) error {
 	}
 	switch code {
 	case 201:
-		if err := listen.SaveCredential(cfg.ConfigDir, name, listen.Credential{
+		if err := listen.SaveCredential(cfg.ConfigDir, cfg.HubURL, name, listen.Credential{
 			AgentID: out.AgentID, AgentSecret: out.AgentSecret,
 		}); err != nil {
 			return err

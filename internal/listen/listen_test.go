@@ -239,7 +239,7 @@ func TestEnsureRegistered(t *testing.T) {
 		if fi.Mode().Perm() != 0o600 {
 			t.Fatalf("credentials.json mode %v, want 0600", fi.Mode().Perm())
 		}
-		creds, _ := LoadCredentials(r.opts.ConfigDir)
+		creds, _ := LoadCredentials(r.opts.ConfigDir, r.opts.HubURL)
 		if creds["repoA"].AgentID != "ag_1" || creds["repoA"].AgentSecret == "" {
 			t.Fatalf("stored credential wrong: %+v", creds["repoA"])
 		}
@@ -253,7 +253,7 @@ func TestEnsureRegistered(t *testing.T) {
 		if r.AgentName() != "taken-2" {
 			t.Fatalf("expected suggested name taken-2, got %s", r.AgentName())
 		}
-		creds, _ := LoadCredentials(r.opts.ConfigDir)
+		creds, _ := LoadCredentials(r.opts.ConfigDir, r.opts.HubURL)
 		if _, ok := creds["taken-2"]; !ok {
 			t.Fatal("credentials not stored under suggested name")
 		}
