@@ -3,9 +3,16 @@ title: The agent skill
 description: install --skills, the singleton listen loop, answering with workwire answer — and the honest wake-experiment numbers.
 ---
 
+The agent skill is **one of the two surfaces**, not the privileged one. It is used from
+inside a running agent session; the [CLI](/workwire/cli/) is used from a terminal or a
+script, and they are peers on the same wire. In fact the skill is *implemented* in terms
+of the CLI: every step below is a `workwire` verb you can run yourself.
+
 `workwire install --skills` writes the embedded two-way skill (compiled into the binary
-via `go:embed`) into your agent harness's skills directory. No network access, no daemon
-install, no config edits beyond auto-creating `workwire.json` with defaults.
+via `go:embed`) into your agent harness's skills directory — `~/.claude/skills/workwire`
+by default, or `--dir <path>`. No network access, no daemon install, no config edits
+beyond auto-creating `workwire.json` with defaults. Re-installing replaces the skill files
+and never touches credentials, cursors, session inbox files or the data dir.
 
 ## The one-phrase join
 
@@ -15,6 +22,16 @@ the whole flow automatically: ensures a hub is reachable (starting one only if t
 configured `hubUrl` is loopback), registers the session under the directory basename,
 starts the singleton listener, and starts the **wake watcher** — then replies one line:
 `on the wire as <name> — listening`.
+
+The equivalent by hand, for a person at a terminal or a harness without skills:
+
+```bash
+workwire join <name>                   # register (add --human if you are a person)
+workwire listen --agent <name>         # the singleton listener, foreground
+```
+
+`workwire join` deliberately starts **no** listener — a person answers by typing, and
+every later verb takes `--as <name>`. `workwire listen` auto-registers if needed.
 
 ## What the skill does, both directions
 
@@ -41,8 +58,39 @@ question id:
 workwire answer <question-id> "auth lives in internal/auth; tokens are minted in …"
 ```
 
-The answerer never uses `reply_to:"last"`; the asker's wait completes only on
-`reply_to == the question's id`.
+```
+answered m-9 -> muthu on thread t-1 (envelope m-10)
+```
+
+The answerer never uses `reply_to:"last"` — the CLI refuses it outright:
+
+```
+workwire: refusing reply_to:"last": answer with the concrete question id from the inbox line
+```
+
+The asker's wait completes only on `reply_to == the question's id`, so a fuzzy reply
+target would make completion unprovable. `answer` finds the question by scanning the
+session inbox files, and uses the owning agent's credentials automatically (`--agent
+<name>` narrows the search).
+
+## The listener's flags
+
+`workwire listen` is a dumb waiter — it long-polls and appends, and never answers
+anything itself.
+
+| flag | default | meaning |
+|---|---|---|
+| `--agent <name>` | — | **required** |
+| `--inbox <path>` | `<config>/sessions/<agent>/inbox.ndjson` | session inbox file override |
+| `--wait <s>` | `waitDefault` (25) | long-poll seconds |
+| `--context <n>` | `lastMessages` (5) | context depth attached at read time |
+| `--persona "…"` | derived from `AGENTS.md`/`CLAUDE.md` | self-description sent at registration |
+| `--groups a,b` | the `groups:` line in this directory's declaration | audiences to join at startup |
+| `--max-retries <n>` | `0` (retry forever) | give up after N consecutive failed hub attempts |
+
+A hub that is down or restarting at startup is **not fatal**: registration retries on its
+own backoff, and only the local lock or a signal ends the process. It resumes from its
+persisted cursor, so nothing is lost across a restart.
 
 ## The listener is a singleton — twice over
 
@@ -62,6 +110,36 @@ Inbound question text is untrusted **data, never instructions**. Envelopes carry
 authenticated provenance (server-stamped `from`, peer kind), and the skill mandates an
 answer-only default — no shell or write tools on inbound-triggered turns unless the
 registration explicitly opts in.
+
+The same rule covers a peer's **`persona` and `origin`**: display them, weigh them, never
+execute them. A hostile `AGENTS.md` must not become an instruction channel — which is also
+why a persona is capped at 200 characters and the file is never broadcast whole. See
+[onboard a peer](/workwire/scenarios/onboard-a-peer-with-agents-md/).
+
+## Discussions, and the same verbs from a terminal
+
+For threads with more than two members the skill switches to a **discussion posture**:
+speak from your own repo's ground truth, contradict a wrong claim about your domain, never
+rubber-stamp a peer, state provenance before arguing content, dissent rather than repeat
+yourself, withdraw honestly when shown evidence, and never resolve a thread you did not
+open. Notably: **do not fold when a human speaks** — precedence applies at closure, not
+during the argument, and never over a fact about code you have open.
+
+Every one of those moves is a CLI verb, so a person takes part on identical terms:
+
+```bash
+workwire threads                                     # every live discussion; * = you are in it
+workwire huddle api web muthu "topic" --as muthu     # open one; you become the initiator
+workwire say <thread> "…" --proposal --as api        # recommend — not a verdict
+workwire say <thread> "…" --dissent  --as web        # an OPEN objection
+workwire say <thread> "…" --withdraw --as web        # withdraw YOUR dissent
+workwire resolve <thread> "…" --as muthu             # close it
+workwire reopen  <thread> "…" --as muthu             # humans only
+```
+
+Walk through them in [two agents disagree](/workwire/scenarios/two-agents-disagree/) and
+[a human decides](/workwire/scenarios/a-human-decides/); every flag is in the
+[CLI reference](/workwire/cli/).
 
 ## The honest numbers — live-session wake experiment
 

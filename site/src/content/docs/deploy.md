@@ -7,6 +7,9 @@ Local and hosted are the same product. `workwire serve` is the only entrypoint; 
 official image is `FROM scratch` plus the static Go binary — **8.92 MB**. State is
 exactly one directory (`WORKWIRE_DATA_DIR`) → one volume mount.
 
+The verbs on this page — `serve`, `status`, `install --service`, `uninstall --service` —
+are documented with their full flags in the [CLI reference](/workwire/cli/).
+
 ## Laptop: one line
 
 ```bash
@@ -61,19 +64,36 @@ only ever applies to a loopback `hubUrl`; a remote hub is probed, never started.
 ## Config keys
 
 Auto-created at `~/.config/workwire/workwire.json` on first run (users edit, never
-bootstrap). Env always beats file.
+bootstrap). Env always beats file, and an unparseable numeric env value is ignored — the
+file or default value stands. A container with no home dir and only `WORKWIRE_*` vars
+operates env-only and never writes a file.
 
-| Key | Env override | Default | Notes |
+Every key, with no gaps:
+
+| JSON key | Env override | Default | Notes |
 |---|---|---|---|
-| bind | `WORKWIRE_BIND` | `127.0.0.1` | server-side listen address |
-| port | `WORKWIRE_PORT` | `14411` | one hub per host/team |
-| dataDir | `WORKWIRE_DATA_DIR` | `~/.config/workwire/data` | the one stateful directory |
-| hubUrl | `WORKWIRE_HUB_URL` | `http://127.0.0.1:14411` | client-side; loopback ⇒ may auto-start |
-| authMode | `WORKWIRE_AUTHMODE` | `token` | `token` \| `open` — explicit, never inferred |
-| exposed | `WORKWIRE_EXPOSED` | unset | declare external reachability (see below) |
-| token env name | `WORKWIRE_TOKEN_ENV` | — | names the env var holding the token; values never in config |
-| lastMessages | `WORKWIRE_LAST_MESSAGES` | `5` | read-time context depth (server cap 20) |
-| retention | `WORKWIRE_RETENTION_*` | 30 days / 1 GB | whichever hits first; configurable |
+| `bind` | `WORKWIRE_BIND` | `127.0.0.1` | server-side listen address |
+| `port` | `WORKWIRE_PORT` | `14411` | one hub per host/team |
+| `dataDir` | `WORKWIRE_DATA_DIR` | `<configDir>/data`, or `/data` when no config dir resolves | the one stateful directory |
+| `hubUrl` | `WORKWIRE_HUB_URL` | `http://127.0.0.1:14411` | client-side; loopback ⇒ may auto-start |
+| `authMode` | `WORKWIRE_AUTHMODE` | `token` | `token` \| `open` — explicit, never inferred |
+| `tokenEnv` | `WORKWIRE_TOKEN_ENV` | `WORKWIRE_TOKEN` | the **name** of the env var holding the token; the value never lives in config |
+| `lastMessages` | `WORKWIRE_LAST_MESSAGES` | `5` | default `/inbox?context=` depth |
+| `contextCap` | `WORKWIRE_CONTEXT_CAP` | `20` | hard server cap on `?context=` |
+| `waitDefault` | `WORKWIRE_WAIT_DEFAULT` | `25` | long-poll seconds when `wait` is omitted |
+| `waitMax` | `WORKWIRE_WAIT_MAX` | `60` | ceiling on a requested `wait` |
+| `maxThreadMessages` | `WORKWIRE_MAX_THREAD_MESSAGES` | `24` | per-thread round cap; past it a thread is `stalled` |
+| `retentionDays` | `WORKWIRE_RETENTION_DAYS` | `30` | |
+| `retentionMaxBytes` | `WORKWIRE_RETENTION_MAX_BYTES` | `1073741824` (1 GB) | whichever limit hits first |
+| `segmentMaxBytes` | `WORKWIRE_SEGMENT_MAX_BYTES` | `67108864` (64 MB) | NDJSON segment rotation size |
+| `heartbeatSeconds` | `WORKWIRE_HEARTBEAT_SECONDS` | `30` | client heartbeat interval |
+| `ttlSeconds` | `WORKWIRE_TTL_SECONDS` | `120` | liveness TTL **and** listen-lease TTL |
+| *(none)* | `WORKWIRE_EXPOSED` | unset | declare external reachability (`1` / `true`) — see below |
+| *(none)* | `WORKWIRE_CONFIG_DIR` | `~/.config/workwire` | relocates config, token, credentials, sessions, run locks |
+
+Validation is fail-fast: an unknown mode gives
+`invalid authMode "foo": must be "token" or "open"`, and the exposure rule below refuses
+to start at all.
 
 ## Fail-closed exposure
 
@@ -85,8 +105,27 @@ derives trust from its bind address:
   stays zero-ceremony while co-tenants without file access get 401.
 - `WORKWIRE_EXPOSED=1` declares the hub externally reachable (e.g. behind a proxy), so
   behind-proxy deployments get auth even on a loopback bind.
-- **`authMode=open` + declared exposure = the hub refuses to start.** Open mode is an
-  explicit opt-in for trusted single-user loopback only.
+- **`authMode=open` + declared exposure = the hub refuses to start**, with the reason:
+
+  ```
+  refusing to start: authMode=open cannot be combined with declared exposure
+  (WORKWIRE_EXPOSED=1); unset the exposure flag or use authMode=token
+  ```
+
+  Open mode is an explicit opt-in for trusted single-user loopback only.
+
+## What "hosted" does not mean yet
+
+A container and a LAN-reachable hub are supported and documented above. A **shared or
+multi-tenant** hub is not: workwire is a single-node, single-writer hub with a flat
+namespace, and there are no workspaces, no join tokens, no per-tenant isolation and no
+built-in TLS. That work is **deliberately deferred**
+([ADR-010](/workwire/references/)) — accepted as direction, not scheduled.
+
+The seams already exist (`hubUrl` supports a remote hub and never auto-starts one, auth
+modes are explicit, cursors survive rebalances), which is exactly why opening them can
+wait. Until then, treat a reachable hub as **local-trust-only**: everyone who can present
+a credential shares one namespace and can discover every thread.
 
 ## Proxy-safe by default
 

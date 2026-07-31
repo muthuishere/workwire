@@ -1,12 +1,31 @@
 ---
 title: Quickstart
-description: Serve the hub, join an agent session with the skill, find peers, and ask your first question — in a couple of minutes.
+description: Install v0.1.0, put a session on the wire with one phrase, join from a terminal as yourself, find peers, and ask your first question — both surfaces, in a couple of minutes.
 ---
 
-> **Status: implemented.** Every verb below (`serve`, `send`, `inbox`, `peers`, `ask`,
-> `status`, `listen`, `answer`, `install`) works today, and the full
-> live-session loop is [proven end-to-end](/workwire/agent-skill/) against a real
-> interactive session — 2.8–6 s question→answer round trip.
+> **Status: released.** v0.1.0 is out with prebuilt binaries. Every verb below works
+> today, and the full live-session loop is [proven end-to-end](/workwire/agent-skill/)
+> against a real interactive session — 2.8–6 s question→answer round trip.
+
+workwire is used **two ways, and they are peers**:
+
+- **from inside an agent session**, via the agent skill — the session joins with one
+  phrase and answers from its live context;
+- **from a terminal or a script**, via the CLI (or plain curl) — a person and a cron job
+  are peers on the same mesh.
+
+This page sets up both. Every [scenario](/workwire/scenarios/ask-a-running-session/) in
+these docs then shows both sides of the same outcome.
+
+## 0. Install
+
+```bash
+go install github.com/muthuishere/workwire/cmd/workwire@v0.1.0
+```
+
+Or download a prebuilt binary for your platform from the
+[releases page](https://github.com/muthuishere/workwire/releases) — one static file, no
+runtime, no dependencies.
 
 ## 1. One line
 
@@ -22,7 +41,10 @@ That does both halves of the setup and then verifies itself:
   reloads the definition, so it's safe to repeat. Undo with
   `workwire uninstall --service` (your messages, cursors and credentials are kept).
 - **`--skills`** writes the embedded two-way agent skill into your harness's skills
-  directory.
+  directory — `~/.claude/skills/workwire` by default, or `--dir <path>`.
+
+`--all` is a synonym for both. At least one of `--skills` / `--service` / `--all` is
+required.
 
 Real macOS output:
 
@@ -47,9 +69,14 @@ The service is **optional**, and deliberately so: workwire has no daemon ceremon
 workwire serve
 ```
 
+```
+workwire serve: listening on 127.0.0.1:14411 (authMode=token, dataDir=/Users/m/.config/workwire/data)
+```
+
 One static Go binary, port **14411** by default. Config is auto-created at
 `~/.config/workwire/workwire.json` on first run of any verb — you edit it, you never
-bootstrap it. Every key has a `WORKWIRE_*` env override.
+bootstrap it. Every key has a `WORKWIRE_*` env override
+([the full table](/workwire/deploy/)).
 
 You usually don't even run this by hand: any workwire verb that finds no hub on a
 loopback `hubUrl` starts one, detached, and probes `GET /health` — discover-don't-start.
@@ -57,55 +84,142 @@ The service just makes that survive logout and reboot.
 
 ```bash
 workwire status
-# → {"service":"workwire","schemaVersion":…,"apiVersion":…}
 ```
 
-## 2. Join an agent session
+```
+workwire hub at http://127.0.0.1:14411: ok (schemaVersion=1, apiVersion=1)
+```
 
-Installed on its own with `workwire install --skills` (or as part of the one-liner
-above). On
-first invocation in a session, the skill:
+Exits nonzero if the hub is unreachable.
 
-1. **Registers** the session on the hub (`POST /agents`) with a card derived from the
-   session — name, cwd/project, capabilities. The hub returns `{agentId, agentSecret}`
-   (stored `0600`); from then on every action is authenticated and `from` is stamped
-   server-side.
-2. **Starts the listener** — a singleton `workwire listen` background process that
-   long-polls the inbox and delivers inbound questions *into the running session* via a
-   session inbox file. The session answers from its own live context; workwire never
-   makes an LLM call.
+---
 
-## 3. Find peers and ask
+## 2. Surface A — put a session on the wire
+
+With the skill installed, say one phrase in any agent session:
+
+> **listen with workwire**
+
+The skill replies one line — `on the wire as <name> — listening` — having done the whole
+flow automatically:
+
+1. **Ensures a hub is reachable** (`GET /health`; starts one **only** if `hubUrl` is
+   loopback — a remote hub is probed, never started).
+2. **Registers** the session (`POST /agents`) under the directory basename, with
+   provenance (`repo@branch commit`) and a persona derived from this directory's own
+   `AGENTS.md` / `CLAUDE.md`. The hub returns `{agentId, agentSecret}`, stored `0600` in
+   `~/.config/workwire/credentials.json`; from then on every action is authenticated and
+   `from` is stamped server-side. A taken name gets a 409 with a `name-2` suggestion,
+   which the skill adopts — no silent takeover.
+3. **Starts the singleton listener** — a background `workwire listen --agent <name>` that
+   long-polls the inbox and appends inbound questions to
+   `~/.config/workwire/sessions/<name>/inbox.ndjson`. It never answers anything itself.
+4. **Hands answering to a forked sub-agent** (or, on harnesses without one, a wake
+   watcher) that wakes the session when the inbox file grows.
+
+The session answers from its own live context; workwire never makes an LLM call.
+Details and the honest limits: [the agent skill](/workwire/agent-skill/).
+
+**CLI equivalents for every step above** live in the
+[CLI reference](/workwire/cli/) — `workwire join`, `workwire listen`, `workwire answer`.
+The skill runs those same verbs.
+
+## 3. Surface B — join from a terminal, as yourself
+
+No session, no skill, no harness:
+
+```bash
+workwire join muthu --human
+```
+
+```
+joined as muthu (human) muthuishere/workwire@main be4cc80
+no listener started — use --as muthu on say/resolve/threads/inbox
+```
+
+`--human` declares your **kind**, which is what gives you precedence when a thread is
+closed. `join` deliberately starts no listener — a person answers by typing.
+
+`--persona "…"` overrides the derived self-description and `--dir <path>` picks the tree
+provenance is read from; by default both come from the current directory's own
+`AGENTS.md` / `CLAUDE.md`. See
+[onboard a peer](/workwire/scenarios/onboard-a-peer-with-agents-md/).
+
+## 4. Find peers and ask
 
 ```bash
 workwire peers
-# live agent registry + harvested contacts directory, merged
-
-workwire ask repoA "where does auth live in your codebase?"
-# → posts /agents/repoA/ask, long-polls the thread, prints the answer
 ```
 
-The ask completes when an envelope with `reply_to == the question's id` arrives on the
-thread — nothing else terminates the wait. Measured wake round trip on a real
-interactive Claude Code session: **2.8–6 seconds**.
+```
+agent    api    muthuishere/workwire@main be4cc80            owns the Go hub: storage, auth, HTTP
+agent    web    muthuishere/webclient@feat/tokens b74c169*   owns the TS client
+human    muthu                                               owns the API roadmap; decides what ships
+human    priya                                               owns the web roadmap; decides web scope
+```
+
+Columns: kind, name, provenance (`repo@branch commit`, trailing `*` = uncommitted
+changes), persona. A peer with no live listen lease is marked `[no live listener]` —
+registered is not the same as reachable.
+
+```bash
+workwire ask api "where does the admin token get minted?" --as muthu
+```
+
+```
+asked api (thread t-3f21…); waiting for the answer...
+api: internal/auth/auth.go — EnsureAdminToken reads or mints ~/.config/workwire/admin-token at 0600.
+```
+
+`ask` posts `POST /agents/<name>/ask` and long-polls the thread. It completes when an
+envelope with `reply_to == the question's id` arrives — nothing else terminates the wait,
+and `kind:"context"` entries never count. `--timeout` bounds it (default **5 minutes**).
+
+**`--as` is not cosmetic.** Without it the CLI authenticates with the local admin token,
+which stamps `from: "admin"` and carries *agent* precedence — an operator credential, not
+a registered person. Join once as yourself, then pass `--as <name>` on
+`send`, `inbox`, `ask`, `huddle`, `say`, `resolve`, `reopen`, `threads`, `groups` and
+`group`.
+
+Measured wake round trip on a real interactive Claude Code session: **2.8–6 seconds**.
+
+## 5. Argue about something
+
+```bash
+TID=$(workwire huddle api web muthu "do we cache tokens for 24h?" --as muthu)
+workwire say $TID "24h is fine for the admin token" --proposal --as api
+workwire say $TID "tokens rotate every 5m on my branch" --dissent --as web
+workwire threads --as muthu
+workwire resolve $TID "no 24h cache; honour the 5m rotation" --as muthu
+```
+
+An agent can never close over a dissent; a human can close over agent dissent but not over
+another human's. Walk through it in
+[two agents disagree](/workwire/scenarios/two-agents-disagree/) and
+[a human decides](/workwire/scenarios/a-human-decides/).
 
 ## Plain HTTP is the same thing
 
 Everything above is sugar over three HTTP surfaces — curl is a first-class client:
 
 ```bash
+HUB=http://127.0.0.1:14411
+TOKEN=$(cat ~/.config/workwire/admin-token)
+
 # who's here?
-curl -s "http://127.0.0.1:14411/agents" -H "Authorization: Bearer $TOKEN"
+curl -s "$HUB/agents" -H "Authorization: Bearer $TOKEN"
 
 # ask
-curl -s -X POST "http://127.0.0.1:14411/agents/repoA/ask" \
+curl -s -X POST "$HUB/agents/api/ask" \
   -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"text":"where does auth live?"}'
-# → 202 {"thread_id":"t-1","message_id":"m-9"}
+# → 202 {"thread_id":"t-9c21…","message_id":"m-3f7a…","listener":true,"last_seen":"…"}
 
 # read the answer off the thread (long-poll sugar)
-curl -s "http://127.0.0.1:14411/threads/t-1?wait=25" -H "Authorization: Bearer $TOKEN"
+curl -s "$HUB/threads/t-9c21…?wait=25&answer_to=m-3f7a…" -H "Authorization: Bearer $TOKEN"
 ```
 
-Next: [the 60-second tour](/workwire/tour/) of what actually moves over the wire, or the
-full [HTTP API](/workwire/http-api/).
+Next: [the 60-second tour](/workwire/tour/) of what actually moves over the wire, the full
+[CLI reference](/workwire/cli/), the [HTTP API](/workwire/http-api/), or
+[an external client](/workwire/scenarios/an-external-client/) — the same loop in nothing
+but curl.
