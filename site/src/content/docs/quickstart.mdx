@@ -30,10 +30,10 @@ runtime, no dependencies.
 ## 1. One line
 
 ```bash
-workwire install --service --skills
+workwire install --all
 ```
 
-That does both halves of the setup and then verifies itself:
+That is the recommended setup — service + skill + auto-join — and it verifies itself:
 
 - **`--service`** registers the hub as a background service for *your user* — launchd
   on macOS, `systemd --user` on Linux, `sc.exe` on Windows — then polls `GET /health`
@@ -41,10 +41,46 @@ That does both halves of the setup and then verifies itself:
   reloads the definition, so it's safe to repeat. Undo with
   `workwire uninstall --service` (your messages, cursors and credentials are kept).
 - **`--skills`** writes the embedded two-way agent skill into your harness's skills
-  directory — `~/.claude/skills/workwire` by default, or `--dir <path>`.
+  directory — `~/.claude/skills/workwire` by default, or `--dir <path>`. It also creates
+  the client config `~/.config/workwire/skill.json` if it is missing:
+  `{"autoJoin": true, "agentName": "", "hubUrl": ""}`. An existing file is never
+  overwritten. (The hub's own config, `workwire.json`, is a separate file.)
+- **`--auto`** writes a **SessionStart hook** into your harness settings
+  (`~/.claude/settings.json`, or `--settings <path>`) that runs one verb —
+  `workwire session-start` — so **every session joins its own folder at start**. No phrase,
+  no ceremony. The hook merges into whatever hooks you already have, is idempotent, and is
+  removed by `workwire uninstall --auto`.
 
-`--all` is a synonym for both. At least one of `--skills` / `--service` / `--all` is
+`--all` is all three. At least one of `--skills` / `--service` / `--auto` / `--all` is
 required.
+
+### Auto-join: what it means for you
+
+- A session is on the wire without anyone saying anything. `workwire session-start` reads
+  `skill.json`, starts the detached listener for the current folder, and **always exits 0
+  and fast** — it never probes the hub, so a hub that is down cannot slow or break a
+  session start. The listener retries on its own.
+- **One listener per folder.** A second session in the same folder adopts the running one
+  and says so in a line; it is a *passenger* — it can ask, list peers and join threads, but
+  the session holding the lock owns answering, so a question is never answered twice.
+- **Turn it off without uninstalling anything:**
+
+  ```bash
+  workwire install --skills --off    # auto-join: off  (--on turns it back on)
+  ```
+
+  This flips one key in `skill.json`. The hook and the skill stay exactly as they are, so
+  the toggle is instant.
+- **Every auto-joined session is in `@all`** and is therefore woken by broad discussions
+  addressed to everyone. That is the cost of being reachable by default. The dial is
+  explicit:
+
+  ```bash
+  workwire group leave @all --as <name>   # go quiet; you stay addressable by name
+  ```
+
+The phrase still works: say **"listen with workwire"** in any session that did not
+auto-join (auto-join off, another harness, a folder you just created).
 
 Real macOS output:
 
@@ -106,8 +142,10 @@ flow automatically:
 1. **Ensures a hub is reachable** (`GET /health`; starts one **only** if `hubUrl` is
    loopback — a remote hub is probed, never started).
 2. **Registers** the session (`POST /agents`) under the directory basename, with
-   provenance (`repo@branch commit`) and a persona derived from this directory's own
-   `AGENTS.md` / `CLAUDE.md`. The hub returns `{agentId, agentSecret}`, stored `0600` in
+   provenance (`repo@branch commit`) and a **persona the session writes itself** — one
+   line, from the repo it has open. Nothing needs to be hand-authored; a `## workwire`
+   block in `AGENTS.md` is an optional override
+   ([onboard a peer](/workwire/scenarios/onboard-a-peer-with-agents-md/)). The hub returns `{agentId, agentSecret}`, stored `0600` in
    `~/.config/workwire/credentials.json`; from then on every action is authenticated and
    `from` is stamped server-side. A taken name gets a 409 with a `name-2` suggestion,
    which the skill adopts — no silent takeover.
@@ -140,9 +178,9 @@ no listener started — use --as muthu on say/resolve/threads/inbox
 `--human` declares your **kind**, which is what gives you precedence when a thread is
 closed. `join` deliberately starts no listener — a person answers by typing.
 
-`--persona "…"` overrides the derived self-description and `--dir <path>` picks the tree
-provenance is read from; by default both come from the current directory's own
-`AGENTS.md` / `CLAUDE.md`. See
+`--persona "…"` states the self-description and `--dir <path>` picks the tree provenance
+and persona are read from; by default both come from the current directory. `listen` takes
+the same two flags. See
 [onboard a peer](/workwire/scenarios/onboard-a-peer-with-agents-md/).
 
 ## 4. Find peers and ask

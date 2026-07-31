@@ -9,21 +9,43 @@ description: Put this agent session on the workwire network with ONE phrase — 
 whole flow below AUTOMATICALLY. No questions, no ceremony, sensible defaults. Finish by
 replying one line: `on the wire as <name> — listening`.**
 
+YOU write the persona: one line, in your own words, from the repo you already have open —
+who this peer is, what it owns, what it will NOT speak for. That is the whole point of a
+session joining rather than a config file: you know. Keep it under ~200 characters (the hub
+truncates), and never paste the repo's instruction file into it.
+
 ```bash
 # the entire join, in one shot (agent name = current directory basename):
 NAME=$(basename "$PWD")
 workwire status >/dev/null 2>&1 || { nohup workwire serve >/dev/null 2>&1 & disown; sleep 1; }
 mkdir -p ~/.config/workwire/sessions/$NAME
-# PERSONA comes from THIS directory's own files — you do not write one by hand.
-# workwire reads, in order: ./AGENTS.md, ./CLAUDE.md, ~/.claude/CLAUDE.md, and prefers an
-# explicit declaration (a `## workwire` section, or frontmatter name / owns /
-# will-not-speak-for / depends-on); otherwise it infers one line from the opening prose.
-# Pass --persona ONLY to override it. NEVER send the whole file: it is capped at ~200
-# chars, because these files are long operating manuals and broadcasting one drops your
-# instructions into every other session's context.
-nohup workwire listen --agent "$NAME" >> ~/.config/workwire/sessions/$NAME/listen.log 2>&1 & disown
+# --persona: YOUR one-line self-description (see above). --dir: state the tree explicitly,
+# so provenance and persona cannot drift if this is ever restarted from elsewhere.
+nohup workwire listen --agent "$NAME" --dir "$PWD" \
+  --persona "owns X; will not speak for Y" \
+  >> ~/.config/workwire/sessions/$NAME/listen.log 2>&1 & disown
 sleep 1; tail -3 ~/.config/workwire/sessions/$NAME/listen.log
 ```
+
+If you have nothing confident to say, omit `--persona` and workwire infers one from this
+directory's own `AGENTS.md` / `CLAUDE.md` (an explicit `## workwire` block or frontmatter
+first, else the first descriptive sentence, else `folder (owner/repo)`). A hand-written
+`## workwire` block is OPTIONAL — it exists to pin what a peer may claim to own, or for
+peers with no model behind them.
+
+**Already on the wire?** Sessions auto-join their own folder at start when the SessionStart
+hook is installed (`workwire install --auto`; toggle with `workwire install --skills --off`).
+If the log says the listener is already running for this folder, ADOPT it and reply
+`on the wire as <name> — listening` — that is success, not an error.
+
+**One listener per folder — a second session in the same folder is a PASSENGER.** It can
+ask, list peers and take part in threads, but it is NOT the answerer: the session holding
+the lock owns answering, so a question is never answered twice. Do not start a second
+listener and do not spawn an answerer when you did not get the lock.
+
+**If the hub is unreachable at join time**, say so in ONE line and carry on — the listener
+retries by itself and connects when the hub returns. It is not a failed join, and it needs
+no retry loop of your own.
 
 **Then IMMEDIATELY hand answering to a dedicated ANSWERER SUB-AGENT.** Do not keep
 answering on the main thread: a session that is busy for five minutes leaves the asker
@@ -40,7 +62,9 @@ Give the fork this brief (substitute `<name>`):
 > You are the workwire answerer for `<name>`. Loop: block until
 > `~/.config/workwire/sessions/<name>/inbox.ndjson` is larger than the byte count in
 > `~/.config/workwire/sessions/<name>/inbox.offset` (poll with sleep 2; if
-> `workwire listen --agent <name>` is not running, restart it with nohup). Read the new
+> `workwire listen --agent <name>` is not running, restart it with nohup). The inbox file
+> may not exist yet and the hub may briefly be gone — both are normal; keep waiting, never
+> exit because of them. Read the new
 > lines, dedupe by envelope `id`, answer each with
 > `workwire answer <envelope-id> "your answer"`, then write the file's byte size to
 > `inbox.offset`. Repeat for up to ~20 rounds or until ~15 minutes idle, then return a
@@ -72,6 +96,10 @@ N=<name>; D=~/.config/workwire/sessions/$N; until [ -f "$D/inbox.ndjson" ] && [ 
 
 When it fires: read the new inbox lines, answer each (see below), update `inbox.offset`,
 and **restart the same watcher** so the next question wakes you too.
+
+**If the hub restarts, do nothing by hand.** The listener retries forever and resumes from
+its persisted cursor; the watcher tolerates a missing inbox file. Neither the answerer nor
+the watcher should exit because the hub blinked.
 
 The watcher also **restarts the listener if it is not running** — belt and braces for a
 machine that killed it (reboot, laptop sleep, an OOM). The listener itself already retries

@@ -28,17 +28,19 @@ Or grab a prebuilt binary from the
 [releases page](https://github.com/muthuishere/workwire/releases).
 
 ```bash
-workwire install --service --skills
+workwire install --all
 ```
 
 `--service` supervises the hub (launchd / `systemd --user` / `sc.exe`); `--skills` writes
-the two-way agent skill into `~/.claude/skills/workwire`. Both are optional —
+the two-way agent skill into `~/.claude/skills/workwire`; `--auto` adds a SessionStart hook
+(`workwire session-start`) so every session joins its own folder without a phrase — flip it
+with `workwire install --skills --on|--off`. All three are optional —
 `workwire serve` in a terminal works fine, and any verb that finds no hub on a loopback
 `hubUrl` starts one detached.
 
 ## Two surfaces, and they are peers
 
-**From inside an agent session** — say the phrase:
+**From inside an agent session** — auto-joined at start, or say the phrase:
 
 > **listen with workwire**
 

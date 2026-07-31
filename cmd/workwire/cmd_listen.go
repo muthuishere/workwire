@@ -53,7 +53,12 @@ func cmdListen(cfg config.Config, args []string) error {
 	lock, err := listen.AcquireLock(filepath.Join(cfg.ConfigDir, "run"), *agent)
 	if err != nil {
 		if _, ok := err.(listen.ErrLocked); ok {
-			return fmt.Errorf("%w — adopt the running listener instead of starting a second", err)
+			// One listener per folder is enough, and a second session in the
+			// same folder is a normal, expected thing — not a failure. It
+			// adopts the running listener and exits 0; only the lock holder
+			// answers, so a question is never answered twice.
+			fmt.Fprintf(os.Stderr, "workwire listen: adopting the running listener for %s\n", *agent)
+			return nil
 		}
 		return err
 	}

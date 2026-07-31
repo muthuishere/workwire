@@ -13,10 +13,15 @@ are documented with their full flags in the [CLI reference](/workwire/cli/).
 ## Laptop: one line
 
 ```bash
-workwire install --service --skills
+workwire install --all
 ```
 
-Registers the hub as a background service for your user and installs the agent skill.
+Registers the hub as a background service for your user, installs the agent skill, and
+writes the auto-join `SessionStart` hook (`workwire session-start`) so every session joins
+its own folder. Two config files, deliberately separate: `workwire.json` is the **hub's**,
+`skill.json` is the **client's** (`{"autoJoin": true, "agentName": "", "hubUrl": ""}`).
+Toggle auto-join with `workwire install --skills --on|--off` — that flips one key and
+touches neither the skill nor the hook. Remove the hook with `workwire uninstall --auto`.
 The backend is whatever the OS actually uses — no supervisor of ours:
 
 | OS | Backend | Where it lands |

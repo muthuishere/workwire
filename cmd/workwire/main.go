@@ -1,6 +1,6 @@
 // workwire — HTTP-only message hub for the work between workers.
 // Verbs: serve, send, inbox, peers, ask, status, huddle, say, resolve, threads,
-// groups, group, listen, answer, install, uninstall.
+// groups, group, listen, answer, session-start, install, uninstall.
 package main
 
 import (
@@ -68,6 +68,8 @@ func main() {
 		err = cmdListen(cfg, args)
 	case "answer":
 		err = cmdAnswer(cfg, args)
+	case "session-start":
+		err = cmdSessionStart(cfg, args)
 	case "install":
 		err = cmdInstall(cfg, args)
 	case "uninstall":
@@ -106,15 +108,21 @@ Usage:
   workwire reopen <thread> "<reason>"     reopen a resolved or stalled thread (humans only)
   workwire listen --agent <name>          singleton listener: deliver inbound questions to the session inbox file
   workwire answer <id> <text>             answer a delivered question by its concrete envelope id
-  workwire install --service --skills     one-line setup: hub as a background service + the agent skill
+  workwire install --all                  one-line setup: service + skill + auto-join hook
+  workwire install --service --skills     hub as a background service + the agent skill
+  workwire install --auto                 auto-join: SessionStart hook so every session joins its own folder
+  workwire install --skills --off         turn auto-join off (config only; --on turns it back on)
+  workwire session-start                  the SessionStart hook entrypoint: joins this folder, always exits 0
   workwire install --skills               install the two-way agent skill only (~/.claude/skills/workwire)
   workwire install --service              run the hub as a background service (launchd / systemd --user / sc.exe)
   workwire uninstall --service            remove the background service (data is kept)
+  workwire uninstall --auto               remove the auto-join hook (nothing else in settings is touched)
 
 The service is optional: without it, run "workwire serve" yourself or let a
 loopback peer auto-start the hub.
 
-Config: ~/.config/workwire/workwire.json (auto-created); WORKWIRE_* env overrides every key.
+Config: ~/.config/workwire/workwire.json (hub, auto-created); WORKWIRE_* env overrides every key.
+Client config: ~/.config/workwire/skill.json ({"autoJoin":true,"agentName":"","hubUrl":""}).
 `)
 }
 
