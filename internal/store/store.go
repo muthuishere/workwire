@@ -41,14 +41,31 @@ func (o *Options) defaults() {
 type record struct {
 	Type string             `json:"type"` // "msg" | "tomb"
 	Seq  int64              `json:"seq,omitempty"`
+	Seqs map[string]int64   `json:"seqs,omitempty"` // per-recipient cursors (ADR-009)
 	Env  *envelope.Envelope `json:"env,omitempty"`
 	ID   string             `json:"id,omitempty"`
 }
 
-// Stored is an envelope with its hub-assigned sequence number.
+// Stored is an envelope with its hub-assigned sequence numbers: Seq is the
+// envelope's own (lowest) sequence, Seqs carries one cursor per recipient so
+// a single fanned-out envelope advances every recipient independently
+// (ADR-009).
 type Stored struct {
-	Seq int64
-	Env *envelope.Envelope
+	Seq  int64
+	Seqs map[string]int64
+	Env  *envelope.Envelope
+}
+
+// SeqFor returns the recipient's own sequence number for this envelope.
+func (s *Stored) SeqFor(agent string) (int64, bool) {
+	if s.Seqs != nil {
+		q, ok := s.Seqs[agent]
+		return q, ok
+	}
+	if s.Env != nil && s.Env.To.Has(agent) {
+		return s.Seq, true
+	}
+	return 0, false
 }
 
 type state struct {
@@ -206,12 +223,17 @@ func (s *Store) loadSegment(path string) error {
 		if r.Type != "msg" || r.Env == nil {
 			continue
 		}
-		st := &Stored{Seq: r.Seq, Env: r.Env}
+		st := &Stored{Seq: r.Seq, Seqs: r.Seqs, Env: r.Env}
 		s.msgs = append(s.msgs, st)
 		s.byID[r.Env.ID] = st
 		s.threads[r.Env.ThreadID] = append(s.threads[r.Env.ThreadID], st)
 		if r.Seq > s.lastSeq {
 			s.lastSeq = r.Seq
+		}
+		for _, q := range r.Seqs {
+			if q > s.lastSeq {
+				s.lastSeq = q
+			}
 		}
 	}
 	return sc.Err()
@@ -260,16 +282,26 @@ func (s *Store) writeState() {
 func (s *Store) Append(env *envelope.Envelope) (int64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.lastSeq++
-	seq := s.lastSeq
-	b, err := json.Marshal(record{Type: "msg", Seq: seq, Env: env})
+	prevSeq := s.lastSeq
+	// One sequence number per recipient; the envelope keeps a single id
+	// (ADR-009). A recipientless envelope still consumes one sequence.
+	seqs := map[string]int64{}
+	for _, to := range env.To {
+		s.lastSeq++
+		seqs[to] = s.lastSeq
+	}
+	if len(seqs) == 0 {
+		s.lastSeq++
+	}
+	seq := prevSeq + 1
+	b, err := json.Marshal(record{Type: "msg", Seq: seq, Seqs: seqs, Env: env})
 	if err != nil {
-		s.lastSeq--
+		s.lastSeq = prevSeq
 		return 0, err
 	}
 	b = append(b, '\n')
 	if _, err := s.seg.Write(b); err != nil {
-		s.lastSeq--
+		s.lastSeq = prevSeq
 		return 0, err
 	}
 	s.segSize += int64(len(b))
@@ -278,7 +310,7 @@ func (s *Store) Append(env *envelope.Envelope) (int64, error) {
 			return 0, err
 		}
 	}
-	st := &Stored{Seq: seq, Env: env}
+	st := &Stored{Seq: seq, Seqs: seqs, Env: env}
 	s.msgs = append(s.msgs, st)
 	s.byID[env.ID] = st
 	s.threads[env.ThreadID] = append(s.threads[env.ThreadID], st)
@@ -314,12 +346,89 @@ func (s *Store) Inbox(agent string, since int64) (msgs []*Stored, next int64, re
 	}
 	next = since
 	for _, st := range s.msgs {
-		if st.Seq > since && st.Env.To == agent {
-			msgs = append(msgs, st)
-			next = st.Seq
+		q, ok := st.SeqFor(agent)
+		if !ok || q <= since {
+			continue
+		}
+		msgs = append(msgs, st)
+		if q > next {
+			next = q
 		}
 	}
 	return msgs, next, false
+}
+
+// ThreadState is the live view of a discussion (ADR-009): membership accrued
+// from participation, message count, and convergence state.
+type ThreadState struct {
+	ThreadID string   `json:"thread_id"`
+	Members  []string `json:"members"`
+	Count    int      `json:"count"`
+	State    string   `json:"state"` // "open" | "resolved" | "stalled"
+	Resolved bool     `json:"-"`
+	LastTS   string   `json:"last_ts,omitempty"`
+}
+
+// threadStateLocked derives membership and state from the persisted
+// envelopes themselves — nothing extra to keep in sync, and it survives
+// restart because the segments do.
+func (s *Store) threadStateLocked(id string, cap int) (ThreadState, bool) {
+	list, ok := s.threads[id]
+	if !ok {
+		return ThreadState{}, false
+	}
+	ts := ThreadState{ThreadID: id, Count: len(list), State: "open"}
+	seen := map[string]bool{}
+	add := func(n string) {
+		if n == "" || seen[n] {
+			return
+		}
+		seen[n] = true
+		ts.Members = append(ts.Members, n)
+	}
+	for _, st := range list {
+		add(st.Env.From)
+		for _, to := range st.Env.To {
+			add(to)
+		}
+		if st.Env.Kind == "resolved" {
+			ts.Resolved = true
+		}
+		ts.LastTS = st.Env.TS
+	}
+	switch {
+	case ts.Resolved:
+		ts.State = "resolved"
+	case cap > 0 && ts.Count >= cap:
+		ts.State = "stalled"
+	}
+	return ts, true
+}
+
+// ThreadState returns the membership/count/state of one thread.
+func (s *Store) ThreadState(id string, cap int) (ThreadState, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.threadStateLocked(id, cap)
+}
+
+// Threads lists every retained thread, newest activity first.
+func (s *Store) Threads(cap int) []ThreadState {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := make([]ThreadState, 0, len(s.threads))
+	for id := range s.threads {
+		if ts, ok := s.threadStateLocked(id, cap); ok {
+			out = append(out, ts)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].LastTS != out[j].LastTS {
+			return out[i].LastTS > out[j].LastTS
+		}
+		return out[i].ThreadID < out[j].ThreadID
+	})
+	return out
 }
 
 // Thread returns the last n envelopes of a thread in order (all when n<=0)

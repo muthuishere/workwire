@@ -83,7 +83,7 @@ func (s *Server) taskFor(threadID string) (map[string]any, bool) {
 	for _, st := range list {
 		e := s.store.Render(st.Env)
 		role := "user"
-		if question != nil && e.From == question.Env.To {
+		if question != nil && question.Env.To.Has(e.From) {
 			role = "agent"
 		}
 		history = append(history, map[string]any{

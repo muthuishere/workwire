@@ -20,7 +20,7 @@ func mustOpen(t *testing.T, dir string, opts Options) *Store {
 
 func env(from, to, thread, text string) *envelope.Envelope {
 	return &envelope.Envelope{
-		ID: envelope.NewID("m"), From: from, To: to,
+		ID: envelope.NewID("m"), From: from, To: envelope.Recipients{to},
 		ThreadID: thread, Text: text, TS: envelope.Now(),
 	}
 }

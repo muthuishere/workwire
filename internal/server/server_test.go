@@ -424,7 +424,9 @@ func TestWaitClamped(t *testing.T) {
 // --- context projection ---
 
 func TestContextProjection(t *testing.T) {
-	h := newHub(t, nil)
+	// 30 messages on one thread: raise the ADR-009 round cap out of the way,
+	// this test is about projection, not convergence.
+	h := newHub(t, func(c *config.Config) { c.MaxThreadMessages = 100 })
 	alice := h.register("alice")
 	repoA := h.register("repoA")
 	_, first := h.req(alice, "POST", "/send", map[string]any{"to": "repoA", "text": "m0"})

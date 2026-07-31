@@ -29,6 +29,7 @@ type Config struct {
 	RetentionDays     int    `json:"retentionDays"`
 	RetentionMaxBytes int64  `json:"retentionMaxBytes"`
 	SegmentMaxBytes   int64  `json:"segmentMaxBytes"`
+	MaxThreadMessages int    `json:"maxThreadMessages"`
 	HeartbeatSeconds  int    `json:"heartbeatSeconds"`
 	TTLSeconds        int    `json:"ttlSeconds"`
 
@@ -53,6 +54,7 @@ func Defaults() Config {
 		RetentionDays:     30,
 		RetentionMaxBytes: 1 << 30, // 1 GB
 		SegmentMaxBytes:   64 << 20,
+		MaxThreadMessages: 24,
 		HeartbeatSeconds:  30,
 		TTLSeconds:        120,
 	}
@@ -134,6 +136,7 @@ func applyEnv(cfg *Config) {
 	num("WORKWIRE_RETENTION_DAYS", &cfg.RetentionDays)
 	num64("WORKWIRE_RETENTION_MAX_BYTES", &cfg.RetentionMaxBytes)
 	num64("WORKWIRE_SEGMENT_MAX_BYTES", &cfg.SegmentMaxBytes)
+	num("WORKWIRE_MAX_THREAD_MESSAGES", &cfg.MaxThreadMessages)
 	num("WORKWIRE_HEARTBEAT_SECONDS", &cfg.HeartbeatSeconds)
 	num("WORKWIRE_TTL_SECONDS", &cfg.TTLSeconds)
 	if v := os.Getenv("WORKWIRE_EXPOSED"); v == "1" || v == "true" {

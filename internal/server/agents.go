@@ -132,7 +132,7 @@ func (s *Server) askCore(id auth.Identity, name, text, threadID string) (env *en
 	if !registry.AskAllowed(target, id.Name()) {
 		return nil, http.StatusForbidden, "ask_denied"
 	}
-	env, st, msg := s.ingest(id, sendRequest{To: name, Text: text, ThreadID: threadID, Kind: "question"})
+	env, st, msg := s.ingest(id, sendRequest{To: envelope.Recipients{name}, Text: text, ThreadID: threadID, Kind: "question"})
 	if msg != "" {
 		return nil, st, msg
 	}

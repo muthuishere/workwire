@@ -6,6 +6,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -50,6 +51,7 @@ func New(cfg config.Config, st *store.Store, reg *registry.Registry, dir *contac
 	mux.HandleFunc("GET /health", s.handleHealth)
 	mux.HandleFunc("POST /send", s.handleSend)
 	mux.HandleFunc("GET /inbox", s.handleInbox)
+	mux.HandleFunc("GET /threads", s.handleListThreads)
 	mux.HandleFunc("GET /threads/{id}", s.handleThread)
 	mux.HandleFunc("DELETE /threads/{id}", s.handleDeleteThread)
 	mux.HandleFunc("DELETE /messages/{id}", s.handleDeleteMessage)
@@ -121,7 +123,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 type sendRequest struct {
-	To          string                `json:"to"`
+	To          envelope.Recipients   `json:"to"`
 	Text        string                `json:"text"`
 	ThreadID    string                `json:"thread_id"`
 	ReplyTo     string                `json:"reply_to"`
@@ -140,10 +142,6 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 	var req sendRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid JSON body")
-		return
-	}
-	if req.To == "" {
-		writeErr(w, http.StatusBadRequest, "to is required")
 		return
 	}
 	env, status, errMsg := s.ingest(id, req)
@@ -165,6 +163,31 @@ func (s *Server) ingest(id auth.Identity, req sendRequest) (*envelope.Envelope, 
 	if threadID == "" {
 		threadID = envelope.NewID("t")
 	}
+	// Convergence + fan-out (ADR-009). Membership accrues from participation:
+	// a send carrying only thread_id goes to every current member but the
+	// sender, and sending into a thread joins you to it.
+	to := req.To
+	if ts, exists := s.store.ThreadState(threadID, s.cfg.MaxThreadMessages); exists {
+		if ts.Resolved {
+			return nil, http.StatusConflict, fmt.Sprintf(
+				"thread %s is resolved: it was closed with kind \"resolved\" and cannot be reopened — start a new thread", threadID)
+		}
+		if s.cfg.MaxThreadMessages > 0 && ts.Count >= s.cfg.MaxThreadMessages {
+			return nil, http.StatusConflict, fmt.Sprintf(
+				"thread %s is stalled: it reached the per-thread cap of %d messages — raise maxThreadMessages in workwire.json (or WORKWIRE_MAX_THREAD_MESSAGES) or resolve it and start a new thread",
+				threadID, s.cfg.MaxThreadMessages)
+		}
+		if len(to) == 0 {
+			for _, m := range ts.Members {
+				if m != from {
+					to = append(to, m)
+				}
+			}
+		}
+	}
+	if len(to) == 0 {
+		return nil, http.StatusBadRequest, "to is required (a name or an array of names), or a thread_id of a thread with other members"
+	}
 	replyTo := req.ReplyTo
 	if replyTo == "last" {
 		// Resolve exactly once at ingest, thread-scoped (hub-core R3).
@@ -182,7 +205,7 @@ func (s *Server) ingest(id auth.Identity, req sendRequest) (*envelope.Envelope, 
 	env := &envelope.Envelope{
 		ID:          envelope.NewID("m"),
 		From:        from,
-		To:          req.To,
+		To:          to,
 		ThreadID:    threadID,
 		ReplyTo:     replyTo,
 		Text:        req.Text,
@@ -361,6 +384,26 @@ func (s *Server) handleThread(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+}
+
+// GET /threads — list live discussions: id, accrued members, message count
+// and convergence state (ADR-009). No new object, just a view of threads.
+func (s *Server) handleListThreads(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.identify(w, r); !ok {
+		return
+	}
+	all := s.store.Threads(s.cfg.MaxThreadMessages)
+	out := make([]store.ThreadState, 0, len(all))
+	for _, ts := range all {
+		if r.URL.Query().Get("state") != "" && r.URL.Query().Get("state") != ts.State {
+			continue
+		}
+		out = append(out, ts)
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"threads":           out,
+		"maxThreadMessages": s.cfg.MaxThreadMessages,
+	})
 }
 
 // DELETE /messages/{id} — tombstone one envelope (hub-core R13).
