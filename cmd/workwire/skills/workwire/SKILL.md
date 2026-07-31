@@ -33,8 +33,9 @@ first, else the first descriptive sentence, else `folder (owner/repo)`). A hand-
 `## workwire` block is OPTIONAL — it exists to pin what a peer may claim to own, or for
 peers with no model behind them.
 
-**Already on the wire?** Sessions auto-join their own folder at start when the SessionStart
-hook is installed (`workwire install --auto`; toggle with `workwire install --skills --off`).
+**Already on the wire?** Auto-join is off by default; when someone has opted in with
+`workwire install --auto`, sessions join their own folder at start (toggle with
+`workwire install --skills --on|--off`).
 If the log says the listener is already running for this folder, ADOPT it and reply
 `on the wire as <name> — listening` — that is success, not an error.
 

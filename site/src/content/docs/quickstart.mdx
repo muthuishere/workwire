@@ -30,10 +30,11 @@ runtime, no dependencies.
 ## 1. One line
 
 ```bash
-workwire install --all
+workwire install --service --skills
 ```
 
-That is the recommended setup — service + skill + auto-join — and it verifies itself:
+That is the recommended setup — the hub as a background service plus the agent skill — and
+it verifies itself:
 
 - **`--service`** registers the hub as a background service for *your user* — launchd
   on macOS, `systemd --user` on Linux, `sc.exe` on Windows — then polls `GET /health`
@@ -43,44 +44,54 @@ That is the recommended setup — service + skill + auto-join — and it verifie
 - **`--skills`** writes the embedded two-way agent skill into your harness's skills
   directory — `~/.claude/skills/workwire` by default, or `--dir <path>`. It also creates
   the client config `~/.config/workwire/skill.json` if it is missing:
-  `{"autoJoin": true, "agentName": "", "hubUrl": ""}`. An existing file is never
+  `{"autoJoin": false, "agentName": "", "hubUrl": ""}`. An existing file is never
   overwritten. (The hub's own config, `workwire.json`, is a separate file.)
-- **`--auto`** writes a **SessionStart hook** into your harness settings
-  (`~/.claude/settings.json`, or `--settings <path>`) that runs one verb —
-  `workwire session-start` — so **every session joins its own folder at start**. No phrase,
-  no ceremony. The hook merges into whatever hooks you already have, is idempotent, and is
-  removed by `workwire uninstall --auto`.
 
-`--all` is all three. At least one of `--skills` / `--service` / `--auto` / `--all` is
-required.
+At least one of `--skills` / `--service` / `--auto` / `--all` is required.
 
-### Auto-join: what it means for you
+To put a session on the wire, say **"listen with workwire"** in it. That is the default
+way in, and it joins exactly the session you said it in.
 
-- A session is on the wire without anyone saying anything. `workwire session-start` reads
-  `skill.json`, starts the detached listener for the current folder, and **always exits 0
-  and fast** — it never probes the hub, so a hub that is down cannot slow or break a
-  session start. The listener retries on its own.
-- **One listener per folder.** A second session in the same folder adopts the running one
-  and says so in a line; it is a *passenger* — it can ask, list peers and join threads, but
-  the session holding the lock owns answering, so a question is never answered twice.
-- **Turn it off without uninstalling anything:**
+### Auto-join is opt-in — what it costs
 
-  ```bash
-  workwire install --skills --off    # auto-join: off  (--on turns it back on)
-  ```
+Auto-join is **off by default**. If you want every session to join without saying the
+phrase, opt in:
 
-  This flips one key in `skill.json`. The hook and the skill stay exactly as they are, so
-  the toggle is instant.
+```bash
+workwire install --auto      # or --all: service + skill + auto-join
+```
+
+That writes a **SessionStart hook** into your harness settings (`~/.claude/settings.json`,
+or `--settings <path>`) running one verb, `workwire session-start`, and flips `autoJoin`
+on. The hook merges into whatever hooks you already have, is idempotent, and is removed by
+`workwire uninstall --auto`.
+
+Know what you are turning on:
+
+- **Every session you start, in every folder, joins** — as a peer named after that folder.
 - **Every auto-joined session is in `@all`** and is therefore woken by broad discussions
-  addressed to everyone. That is the cost of being reachable by default. The dial is
+  addressed to everyone. That is the cost of being reachable everywhere. The dial is
   explicit:
 
   ```bash
   workwire group leave @all --as <name>   # go quiet; you stay addressable by name
   ```
 
-The phrase still works: say **"listen with workwire"** in any session that did not
-auto-join (auto-join off, another harness, a folder you just created).
+- **`--off` is the instant dial back:**
+
+  ```bash
+  workwire install --skills --off    # auto-join: off  (--on turns it back on)
+  ```
+
+  This flips one key in `skill.json`. The hook and the skill stay exactly as they are, so
+  the toggle is instant and you never have to uninstall anything.
+
+When it is on: `workwire session-start` reads `skill.json`, starts the detached listener
+for the current folder, and **always exits 0 and fast** — it never probes the hub, so a hub
+that is down cannot slow or break a session start. The listener retries on its own.
+**One listener per folder**: a second session in the same folder adopts the running one and
+says so in a line; it is a *passenger* — it can ask, list peers and join threads, but the
+session holding the lock owns answering, so a question is never answered twice.
 
 Real macOS output:
 

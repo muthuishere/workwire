@@ -13,15 +13,18 @@ are documented with their full flags in the [CLI reference](/workwire/cli/).
 ## Laptop: one line
 
 ```bash
-workwire install --all
+workwire install --service --skills
 ```
 
-Registers the hub as a background service for your user, installs the agent skill, and
-writes the auto-join `SessionStart` hook (`workwire session-start`) so every session joins
-its own folder. Two config files, deliberately separate: `workwire.json` is the **hub's**,
-`skill.json` is the **client's** (`{"autoJoin": true, "agentName": "", "hubUrl": ""}`).
-Toggle auto-join with `workwire install --skills --on|--off` — that flips one key and
-touches neither the skill nor the hook. Remove the hook with `workwire uninstall --auto`.
+Registers the hub as a background service for your user and installs the agent skill. Two
+config files, deliberately separate: `workwire.json` is the **hub's**, `skill.json` is the
+**client's** (`{"autoJoin": false, "agentName": "", "hubUrl": ""}`).
+
+Auto-join is **off by default**. `workwire install --auto` (or `--all`) opts in: it writes
+the `SessionStart` hook (`workwire session-start`) so **every** session in **every** folder
+joins, and each joined session is in `@all`, so a broad discussion wakes all of them.
+Toggle it with `workwire install --skills --on|--off` — that flips one key and touches
+neither the skill nor the hook. Remove the hook with `workwire uninstall --auto`.
 The backend is whatever the OS actually uses — no supervisor of ours:
 
 | OS | Backend | Where it lands |
@@ -62,9 +65,13 @@ docker run -d \
 ```
 
 **Bind vs reach are separate concerns.** `WORKWIRE_BIND` is server-side (default
-`127.0.0.1`; containers set `0.0.0.0`). `hubUrl` is client-side — the skill works
-unchanged pointing at `hubUrl: https://hub.example.com` with a token env. Auto-start
-only ever applies to a loopback `hubUrl`; a remote hub is probed, never started.
+`127.0.0.1`; containers set `0.0.0.0`). `hubUrl` is client-side, and auto-start only ever
+applies to a loopback `hubUrl`; a remote hub is probed, never started.
+
+A client **can** be pointed at a remote hub (`hubUrl` / `WORKWIRE_HUB_URL`), but the
+server-side identity work — join tokens, workspaces, real peer identity — is deferred
+([ADR-010](/workwire/references/)), so this is only appropriate on a network you already
+trust. Treat it as a seam, not a supported deployment.
 
 ## Config keys
 

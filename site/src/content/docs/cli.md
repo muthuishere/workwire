@@ -491,7 +491,8 @@ tree. If that is wrong, stop and restart with --dir /old/path
 ## `workwire session-start`
 
 The **auto-join hook entrypoint** — what the harness's `SessionStart` hook runs, so a
-session is on the wire without anyone saying a phrase.
+session is on the wire without anyone saying a phrase. Auto-join is off unless you opted in
+with `workwire install --auto`, in which case this verb does nothing at all.
 
 ```bash
 workwire session-start
@@ -548,8 +549,8 @@ workwire install [--skills] [--service] [--auto] [--all] [--on|--off] [--dir <sk
 |---|---|
 | `--skills` | install the two-way agent skill (default `~/.claude/skills/workwire`) |
 | `--service` | run the hub as a background service (launchd / `systemd --user` / `sc.exe`) |
-| `--auto` | auto-join: write the `SessionStart` hook that runs `workwire session-start` |
-| `--all` | all three — the one-line setup |
+| `--auto` | **opt in** to auto-join: write the `SessionStart` hook that runs `workwire session-start`, and turn `autoJoin` on |
+| `--all` | all three — the recommended setup plus opt-in auto-join |
 | `--on` / `--off` | flip `autoJoin` in `skill.json`; touches nothing else |
 | `--dir <path>` | skills directory override |
 | `--settings <path>` | harness settings file (default `~/.claude/settings.json`) |
@@ -569,12 +570,17 @@ The hook itself carries no shell logic:
 ```
 
 `--skills` also creates `~/.config/workwire/skill.json` when it is missing, with auto-join
-on. An existing file is never overwritten, so a deliberate `--off` survives every
-re-install:
+**off** — joining every session in every folder is opted into, never inherited. An existing
+file is never overwritten, so a deliberate `--on` or `--off` survives every re-install:
 
 ```json
-{"autoJoin": true, "agentName": "", "hubUrl": ""}
+{"autoJoin": false, "agentName": "", "hubUrl": ""}
 ```
+
+`--auto` is the opt-in: it installs the hook *and* flips the key on, and prints the cost —
+every session in every folder joins as a peer named after that folder, and each joined
+session is in `@all`, so a broad discussion wakes all of them. `workwire install --skills
+--off` turns it off instantly without removing the hook.
 
 `--on` / `--off` flip only that key — not the skill files, not the hook — so the toggle is
 instant and the hook can stay installed permanently:
