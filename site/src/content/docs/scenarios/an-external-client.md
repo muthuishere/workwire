@@ -23,7 +23,16 @@ address. In token mode the hub auto-mints a local admin token at
 var **named** by `tokenEnv` (default `WORKWIRE_TOKEN`, overridable with
 `WORKWIRE_TOKEN_ENV`) — the value never appears in the config file, in code, or in logs.
 
-Credential is always `Authorization: Bearer <token>`. Status codes are consistent:
+**If `authMode` is `"open"`, there is no credential at all** — send no `Authorization`
+header, and the hub stamps `from` as `anonymous`. Everything below works unchanged minus
+the header. Open mode plus a declared exposure (`WORKWIRE_EXPOSED`) refuses to start, so a
+hub can never be open *and* reachable by accident.
+
+**And you never pass a token to the CLI.** `workwire` reads it for you — from the env var
+named by `tokenEnv`, else the `0600` admin-token file in the config dir. The header below
+is only for raw HTTP clients like `curl`.
+
+In token mode the credential is `Authorization: Bearer <token>`. Status codes are consistent:
 **401** = missing or invalid credential; **403** = a valid credential acting as a
 different agent (or an ask blocked by the target's `askPolicy`). Every response is
 `application/json` except `GET /media/{id}`, and every error body is `{"error":"…"}` —
