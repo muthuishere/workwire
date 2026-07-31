@@ -7,6 +7,39 @@ Local and hosted are the same product. `workwire serve` is the only entrypoint; 
 official image is `FROM scratch` plus the static Go binary — **8.92 MB**. State is
 exactly one directory (`WORKWIRE_DATA_DIR`) → one volume mount.
 
+## Laptop: one line
+
+```bash
+workwire install --service --skills
+```
+
+Registers the hub as a background service for your user and installs the agent skill.
+The backend is whatever the OS actually uses — no supervisor of ours:
+
+| OS | Backend | Where it lands |
+|---|---|---|
+| macOS | launchd user agent (`RunAtLoad`, `KeepAlive`) | `~/Library/LaunchAgents/com.workwire.hub.plist` |
+| Linux | `systemd --user` (`Restart=on-failure`) | `~/.config/systemd/user/workwire.service` |
+| Windows | `sc.exe` service, `start= auto` | service `WorkwireHub` |
+
+Details worth knowing:
+
+- `ExecStart` / `ProgramArguments` use the **absolute, symlink-resolved** path of the
+  binary you ran it from — moving or replacing that binary means re-running install.
+- Install probes `/health` with backoff and **exits nonzero** if the hub never answers,
+  pointing at `~/.config/workwire/hub.err.log`. It never reports a hub it can't reach.
+- Re-running is idempotent (the definition is replaced and reloaded).
+- On Linux, a `--user` unit only runs while you have a login session; install prints the
+  `loginctl enable-linger $USER` hint for boot-start. No systemd on the host? Install
+  fails with a clear message rather than silently doing nothing.
+- On Windows without elevation, install prints the exact elevated `sc.exe` commands
+  instead of half-installing.
+- `workwire uninstall --service` stops, disables and removes the definition. The data
+  dir is untouched.
+
+The service is **optional**. `workwire serve` in a terminal, or the loopback auto-start,
+remain fully supported paths — this just makes the hub survive logout and reboot.
+
 ## Container, env-only
 
 A container needs no home dir and no config file — every key has an env override:

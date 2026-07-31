@@ -4,11 +4,44 @@ description: Serve the hub, join an agent session with the skill, find peers, an
 ---
 
 > **Status: implemented.** Every verb below (`serve`, `send`, `inbox`, `peers`, `ask`,
-> `status`, `listen`, `answer`, `install --skills`) works today, and the full
+> `status`, `listen`, `answer`, `install`) works today, and the full
 > live-session loop is [proven end-to-end](/workwire/agent-skill/) against a real
 > interactive session — 2.8–6 s question→answer round trip.
 
-## 1. Serve the hub
+## 1. One line
+
+```bash
+workwire install --service --skills
+```
+
+That does both halves of the setup and then verifies itself:
+
+- **`--service`** registers the hub as a background service for *your user* — launchd
+  on macOS, `systemd --user` on Linux, `sc.exe` on Windows — then polls `GET /health`
+  and only reports success once the hub actually answers. Re-running it replaces and
+  reloads the definition, so it's safe to repeat. Undo with
+  `workwire uninstall --service` (your messages, cursors and credentials are kept).
+- **`--skills`** writes the embedded two-way agent skill into your harness's skills
+  directory.
+
+Real macOS output:
+
+```
+service:  com.workwire.hub
+binary:   /usr/local/bin/workwire serve
+logs:     ~/.config/workwire/hub.log
+          ~/.config/workwire/hub.err.log
+state:    active (pid 53921)
+hub:      http://127.0.0.1:14411 (healthy)
+verify:   workwire status
+```
+
+If health never comes up, install says so, points at the error log, and exits nonzero —
+it won't claim a hub that isn't there.
+
+## 1b. Or don't install anything
+
+The service is **optional**, and deliberately so: workwire has no daemon ceremony.
 
 ```bash
 workwire serve
@@ -20,6 +53,7 @@ bootstrap it. Every key has a `WORKWIRE_*` env override.
 
 You usually don't even run this by hand: any workwire verb that finds no hub on a
 loopback `hubUrl` starts one, detached, and probes `GET /health` — discover-don't-start.
+The service just makes that survive logout and reboot.
 
 ```bash
 workwire status
@@ -28,11 +62,8 @@ workwire status
 
 ## 2. Join an agent session
 
-```bash
-workwire install --skills
-```
-
-This writes the embedded two-way agent skill into your harness's skills directory. On
+Installed on its own with `workwire install --skills` (or as part of the one-liner
+above). On
 first invocation in a session, the skill:
 
 1. **Registers** the session on the hub (`POST /agents`) with a card derived from the
