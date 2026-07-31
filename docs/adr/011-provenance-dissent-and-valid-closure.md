@@ -88,6 +88,30 @@ Peers declare a `kind` at registration: `agent` (default) or `human`.
   that stalls *with* open dissent is the most informative outcome the system can produce:
   it says exactly where two real codebases disagree and that no human has ruled yet.
 
+### 3a. Precedence: humans outrank agents — on decisions, not on facts
+
+Stated as a general rule, not just a closing rule:
+
+- **A human ruling is final.** `resolved` from a human closes the matter; no agent may
+  reverse, re-litigate or reopen it. An agent that still disagrees may record a `dissent`
+  for the record, but the thread stays closed and the dissent stands as history.
+- **A human may reopen any thread** — one an agent closed, or one the round cap stalled.
+  Agents may not reopen anything.
+- **Precedence applies at closure, NOT during the discussion.** While a thread is open, a
+  human's message is a contribution like any other — weightier on priorities, intent and
+  scope, but still there to be argued with. An agent that folds the moment a human speaks
+  has ended the discussion early and destroyed the reason the human convened it. Keep
+  disagreeing until the thread is closed; that is the job.
+- **Precedence is over decisions, never over facts.** If a human asserts something about
+  code an agent has open and the code says otherwise, the agent must say so, with the file
+  and its provenance — before closure and after. Deferring on a factual claim is sycophancy
+  wearing good manners, and it is exactly what this design exists to prevent. What to *do*
+  about the fact is the human's call; what the fact *is* is not up for deference.
+- **A closed thread ends the decision, not the disagreement.** Agents may still record a
+  `dissent` on a resolved thread; it is preserved as history rather than reopening the
+  matter. "We decided X over a standing objection from `api@main`" is a far more useful
+  record than a clean-looking consensus that never existed.
+
 ### 4. The skill leans into the tension
 
 Discussion posture gains: when your provenance differs from a peer's, **say so before
