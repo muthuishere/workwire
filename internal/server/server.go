@@ -424,19 +424,37 @@ func (s *Server) handleThread(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// GET /threads — list live discussions: id, accrued members, message count
-// and convergence state (ADR-009). No new object, just a view of threads.
+// GET /threads — list live discussions: id, topic, accrued members, message
+// count, open dissents and convergence state (ADR-009, ADR-011).
+//
+// Discovery is deliberately broad: EVERY authenticated peer sees every
+// thread, not only the ones it was addressed in — addressing controls
+// delivery (who wakes up), discovery controls participation (who may walk
+// in). Each entry is marked with whether the caller is already a member.
+// This is a local-trust assumption; a shared hub needs per-workspace scoping
+// (ADR-010).
 func (s *Server) handleListThreads(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.identify(w, r); !ok {
+	id, ok := s.identify(w, r)
+	if !ok {
 		return
 	}
+	me := id.Name()
 	all := s.store.Threads(s.cfg.MaxThreadMessages)
-	out := make([]store.ThreadState, 0, len(all))
+	out := make([]map[string]any, 0, len(all))
 	for _, ts := range all {
 		if r.URL.Query().Get("state") != "" && r.URL.Query().Get("state") != ts.State {
 			continue
 		}
-		out = append(out, ts)
+		b, err := json.Marshal(ts)
+		if err != nil {
+			continue
+		}
+		var entry map[string]any
+		if err := json.Unmarshal(b, &entry); err != nil {
+			continue
+		}
+		entry["member"] = ts.HasMember(me)
+		out = append(out, entry)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"threads":           out,

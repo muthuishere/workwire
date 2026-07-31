@@ -191,6 +191,8 @@ func cmdThreads(cfg config.Config, args []string) error {
 					Dirty  bool   `json:"dirty"`
 				} `json:"origin"`
 			} `json:"dissents"`
+			Member     bool   `json:"member"`
+			Topic      string `json:"topic"`
 			ClosedBy   string `json:"closed_by"`
 			ClosedOver []struct {
 				Peer string `json:"peer"`
@@ -235,7 +237,17 @@ func cmdThreads(cfg config.Config, args []string) error {
 			}
 			flag += fmt.Sprintf("  closed by %s over %s", t.ClosedBy, strings.Join(over, ","))
 		}
-		fmt.Printf("%-22s %-9s %2d/%d  %s%s\n", t.ThreadID, t.State, t.Count, out.Max, strings.Join(t.Members, ", "), flag)
+		// A leading `*` marks a thread you are already in; the rest are
+		// discoverable — join one by contributing when it touches what you own.
+		mark := " "
+		if t.Member {
+			mark = "*"
+		}
+		topic := t.Topic
+		if len(topic) > 44 {
+			topic = topic[:43] + "…"
+		}
+		fmt.Printf("%s %-22s %-9s %2d/%d  %-44s %s%s\n", mark, t.ThreadID, t.State, t.Count, out.Max, topic, strings.Join(t.Members, ", "), flag)
 	}
 	return nil
 }

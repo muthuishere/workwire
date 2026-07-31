@@ -395,9 +395,22 @@ type ThreadState struct {
 	ClosedBy     string    `json:"closed_by,omitempty"`
 	ClosedByKind string    `json:"closed_by_kind,omitempty"`
 	ClosedOver   []Dissent `json:"closed_over,omitempty"`
+	// Topic is the thread's opening line, so a peer browsing threads it was
+	// never addressed in can tell whether it touches what they own.
+	Topic string `json:"topic,omitempty"`
 	// Reopened is true when a human reopened the thread after a close or a
 	// stall (ADR-011 §3a).
 	Reopened bool `json:"reopened,omitempty"`
+}
+
+// HasMember reports whether name is a member of the thread.
+func (t ThreadState) HasMember(name string) bool {
+	for _, m := range t.Members {
+		if m == name {
+			return true
+		}
+	}
+	return false
 }
 
 // OpenDissentsBy returns the open dissents raised by peers other than `peer`.
@@ -480,6 +493,7 @@ func (s *Store) threadStateLocked(id string, cap int) (ThreadState, bool) {
 	capBase := 0
 	if len(list) > 0 {
 		ts.Initiator = list[0].Env.From
+		ts.Topic = list[0].Env.Text
 	}
 	for idx, st := range list {
 		e := st.Env

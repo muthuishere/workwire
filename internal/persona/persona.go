@@ -70,8 +70,10 @@ func fromSection(doc string) string {
 			if in {
 				break
 			}
+			// A `## workwire` block only — the document TITLE (`# workwire`)
+			// is the repo's name, not a declaration about the peer.
 			h := strings.ToLower(strings.TrimSpace(strings.TrimLeft(t, "# ")))
-			in = h == "workwire"
+			in = strings.HasPrefix(t, "##") && h == "workwire"
 			continue
 		}
 		if in && t != "" {
