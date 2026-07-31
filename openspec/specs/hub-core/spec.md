@@ -77,6 +77,18 @@ identical behavior on a laptop, in a `FROM scratch` container, or behind a rever
 - WHEN retention runs
 - THEN those segments are removed; the hub can run indefinitely on one volume without unbounded growth
 
+#### Scenario: an age-based policy actually collects
+- GIVEN a retention window of N and a hub whose traffic never reaches the segment size bound
+- WHEN the periodic retention pass runs and the active segment is older than a fraction of N
+- THEN that segment is rotated first so it becomes droppable, and records older than N are collected — an age-based policy SHALL NOT be silently unreachable because rotation only happens on size
+
+#### Scenario: retention does not rewrite derived thread state
+- GIVEN a thread that was opened by `muthu`, carries one dissent from `web`, and was closed by `muthu` over that dissent
+- AND retention drops the segment holding that thread's earliest envelopes
+- WHEN `GET /threads` is read afterwards
+- THEN `initiator`, `topic`, `state`, `closed_by`, `closed_by_kind`, `closed_over` and the open `dissents` are UNCHANGED — they are recovered from a retention-immune thread checkpoint, not recomputed from whatever survived
+- AND the entry carries `truncated: true` with `earliest_retained` set to the oldest envelope still readable, so the loss of message history is declared rather than hidden
+
 ### R5: The system SHALL assign each recipient a monotonic, hub-generated sequence cursor decoupled from file layout; every `/inbox` response SHALL carry `next` (the authoritative cursor to poll with); and a `since` cursor older than retained history SHALL return `{"messages":[],"next":<earliest available cursor>,"reset":true}` — the client rebases; there is never a silent skip. Delivery is at-least-once and consumers MUST dedupe by envelope `id`.
 
 #### Scenario: normal cursor advance
@@ -222,6 +234,21 @@ identical behavior on a laptop, in a `FROM scratch` container, or behind a rever
 #### Scenario: unknown id
 - WHEN `DELETE /messages/m-nope` is called
 - THEN the hub responds `404` with a JSON error body
+
+#### Scenario: derived thread state is a read too
+- GIVEN a thread whose opening line and whose dissent text each contain a pasted secret
+- WHEN those two envelopes are tombstoned
+- THEN `GET /threads` SHALL serve neither string — the entry's `topic` and every `dissents[].text` are excised — and a `409` rejecting a close SHALL NOT quote the deleted dissent text either
+- AND the accountability record itself survives: the dissenter's name, kind, timestamp, provenance, the initiator and the closure record are unchanged
+
+#### Scenario: a fully deleted thread leaves discovery
+- GIVEN every envelope on thread `t-9` has been tombstoned
+- WHEN any authenticated peer reads `GET /threads`
+- THEN `t-9` is not listed at all (R22 lists every NON-deleted thread), rather than listed as an empty husk
+
+#### Scenario: the deletion is itself accountable
+- GIVEN an authenticated peer calls `DELETE /messages/m-7`
+- THEN the tombstone record persists who deleted it and when, and that record survives restart and NDJSON replay
 
 ### R14: The system SHALL accept `to` as either a single name (a JSON string) or an array of names, delivering ONE envelope with ONE `id` to every recipient while assigning each recipient its own sequence cursor (ADR-009). A string `to` behaves exactly as before, including its wire shape on read. Delivery stays at-least-once and consumers dedupe by envelope `id`; storage stays one stored envelope regardless of recipient count.
 

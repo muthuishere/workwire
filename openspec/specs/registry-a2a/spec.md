@@ -36,6 +36,12 @@ MUST authenticate with it. `askPolicy` defaults to any **authenticated** peer.
 - WHEN it sends `POST /agents` with `{"name":"repoA", ...updated card...}`
 - THEN the hub responds `200`, updates the stored card, refreshes liveness, and does NOT rotate the secret
 
+#### Scenario: `kind` is pinned once established
+- GIVEN `muthu` is registered with `kind:"human"` and the caller holds `muthu`'s secret
+- WHEN it re-registers with a card carrying `kind:"agent"` (or an agent re-registers as `"human"`)
+- THEN the hub responds `409` with a body naming the kind that stands, changes nothing, and the peer keeps the decision precedence it had (ADR-011 §3) — a peer's kind SHALL NOT change on re-registration
+- AND a card that omits `kind` entirely re-registers normally with `200`, keeping the stored kind: omitting the flag is never a demotion
+
 ### R2: The system SHALL reject a second registration of a taken name with `409` and a suggested free name
 
 No silent takeover, no card overwrite (ADR-007). The `409` body is
