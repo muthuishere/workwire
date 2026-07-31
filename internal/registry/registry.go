@@ -127,9 +127,9 @@ type Registry struct {
 	agents map[string]*Agent // by name
 	leases map[string]*Lease // by agent name
 	// answerers records, per agent name, when something last declared itself
-	// ATTACHED to answer (ADR-013 stress finding B). Deliberately separate
-	// from leases: the lease is a delivery fact, this is an answerability
-	// fact, and auto-join makes them diverge by default. In-memory only —
+	// ATTACHED to answer. Deliberately separate from leases: the lease is a
+	// delivery fact and this is an answerability fact — a listener can be
+	// delivering into an inbox file nobody is reading. In-memory only —
 	// after a hub restart nobody is answering until they say so again.
 	answerers map[string]time.Time
 	// groups is the audience map (ADR-012): group name -> member set. It

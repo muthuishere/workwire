@@ -33,11 +33,19 @@ first, else the first descriptive sentence, else `folder (owner/repo)`). A hand-
 `## workwire` block is OPTIONAL — it exists to pin what a peer may claim to own, or for
 peers with no model behind them.
 
-**Already on the wire?** Auto-join is off by default; when someone has opted in with
-`workwire install --auto`, sessions join their own folder at start (toggle with
-`workwire install --skills --on|--off`).
-If the log says the listener is already running for this folder, ADOPT it and reply
-`on the wire as <name> — listening` — that is success, not an error.
+**Want a repo to join every session automatically?** Say so in the repo's OWN
+`CLAUDE.md` / `AGENTS.md`, next to its `## workwire` block — the harness reads that file at
+the start of every session, so no hook and no installer is involved:
+
+> At the start of a session, join workwire (`listen with workwire`).
+
+That opt-in is per-repo by construction, lives in version control where everyone can see it,
+and cannot join a repo nobody asked to join. There is no auto-join switch — and nothing is
+lost by not having one: the hub queues questions against your cursor, so a peer that is away
+receives its backlog the moment it joins.
+
+**Already on the wire?** If the log says the listener is already running for this folder,
+ADOPT it and reply `on the wire as <name> — listening` — that is success, not an error.
 
 **One listener per folder — a second session in the same folder is a PASSENGER.** It can
 ask, list peers and take part in threads, but it is NOT the answerer: the session holding

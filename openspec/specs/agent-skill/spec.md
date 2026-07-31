@@ -353,57 +353,57 @@ a local disambiguation from the parent folder) — and join nothing.
 
 #### Scenario: two folders with the same basename
 - GIVEN `~/a/api` has joined as `api`
-- WHEN a session starts in `~/b/api`
-- THEN it does NOT join, does NOT take over `api`, and prints (and logs) that `api` belongs to `~/a/api`, with a suggested name to use instead
-- AND `workwire listen --agent api --dir ~/b/api` fails with the same message rather than adopting
+- WHEN `workwire listen --agent api --dir ~/b/api` runs
+- THEN it does NOT join and does NOT take over `api`; it fails naming both folders and a free name to use instead, rather than adopting
 
 #### Scenario: the same folder again is still adoption
 - GIVEN `~/a/api` holds the lock for `api`
-- WHEN another session starts in `~/a/api`
+- WHEN a second `workwire listen --agent api --dir ~/a/api` runs
 - THEN it adopts the running listener and exits 0 — one listener per folder, unchanged
 
 #### Scenario: the binding survives a restart
 - GIVEN `~/a/api` joined as `api` and its listener has since exited
-- WHEN a session starts in `~/a/api` again
+- WHEN it listens again from `~/a/api`
 - THEN it joins as `api` (the folder keeps the name it joined under)
-- AND a session in `~/b/api` still gets the conflict, because the binding is persisted, not merely a live lock
+- AND `~/b/api` still gets the conflict, because the binding is persisted, not merely a live lock
 
 #### Scenario: asking for a suggestion never registers anything
 - WHEN the CLI asks the hub what free name to suggest
 - THEN it probes the existing card first and only then POSTs a credential-less registration to receive `409` + `suggestion`; a name the hub does not know is never created as a side effect
 
-### R18: The system SHALL provide `workwire session-start` as the auto-join hook entrypoint, which ALWAYS exits 0 and immediately — including the process it spawns — and SHALL resolve client configuration in one place with a stated precedence
+### R18: The system SHALL make joining an opt-in the REPO states in its own instruction file, not a harness hook, and SHALL resolve client configuration in one place with a stated precedence
 
-Auto-join is opted into (`skill.json`'s `autoJoin`, default OFF) and fires from a harness
-SessionStart hook. The property is an OUTCOME, not a mechanism: the hook can never block or
-fail a session start. A missing config, an unparseable `workwire.json`, an unreadable config
-dir, a corrupt `skill.json` or a dead hub SHALL all exit 0 and fast, and the tolerance SHALL
-extend to the detached `workwire listen` it spawns, which re-reads the same file — otherwise
-a green exit code hides a dead auto-join. Client configuration resolves with the precedence
-**flag > `WORKWIRE_*` env > `skill.json` > `workwire.json` > defaults**; `skill.json`'s
-`hubUrl` and `tokenEnv` apply to CLIENT verbs only (never to `serve`), and `tokenEnv` NAMES an
-env var — a secret value never lives in a config file. A remote hub named through `skill.json`
-is governed by auth R10 exactly like one named anywhere else.
+There is no auto-join verb, no SessionStart hook and no `autoJoin` switch. A repo that wants
+its sessions on the wire says so in its own `CLAUDE.md` / `AGENTS.md` — the harness already
+loads that file every session, so the opt-in is per-repo by construction, visible in version
+control, needs no installer, and cannot reach a repo that did not ask for it. Nothing is lost
+by having no hook: the hub queues each message against the recipient's cursor (hub-core R5), so
+a peer that is away receives its backlog the moment it joins.
 
-#### Scenario: a corrupt workwire.json cannot fail a session start
-- GIVEN `~/.config/workwire/workwire.json` contains invalid JSON
-- WHEN the harness runs `workwire session-start`
-- THEN it exits 0, returns immediately, and records the problem in the auto-join log
-- AND the configuration it uses is the defaults plus every `WORKWIRE_*` override
+Client configuration resolves with the precedence **flag > `WORKWIRE_*` env > `skill.json` >
+`workwire.json` > defaults**, in one place. `skill.json` holds `agentName`, `hubUrl`,
+`tokenEnv` and an optional literal `token`; it applies to CLIENT verbs only, never to `serve`.
+`tokenEnv` NAMES an env var and never holds a value. An `autoJoin` key left in an existing
+file by an older install SHALL be ignored, never an error.
 
-#### Scenario: tolerance reaches the spawned listener
-- GIVEN the same corrupt file AND `autoJoin: true`
-- WHEN `session-start` spawns the detached `workwire listen`
-- THEN the child also tolerates the unreadable file and joins, instead of exiting 1 on the loader
+#### Scenario: a repo opts itself in
+- GIVEN a repo whose `CLAUDE.md` says "At the start of a session, join workwire (`listen with workwire`)"
+- WHEN a session starts in that repo
+- THEN the session joins because its own instructions say so — no hook is installed and no other repo is affected
 
-#### Scenario: missing or unreadable config dir
-- GIVEN no config dir, or one whose permissions deny reading
-- WHEN `workwire session-start` runs
-- THEN it exits 0 without creating noise on the session's output
+#### Scenario: nothing is lost while a peer is away
+- GIVEN questions were sent to `api` while no session was open in its folder
+- WHEN a session next joins as `api`
+- THEN the queued questions are delivered from its persisted cursor
 
 #### Scenario: skill.json names the hub
 - GIVEN `skill.json` sets `hubUrl` to a remote hub and `tokenEnv` to `TEAM_HUB_TOKEN`
 - WHEN a client verb runs with no `WORKWIRE_HUB_URL` in the environment
 - THEN it targets that hub and looks for the token in `$TEAM_HUB_TOKEN`
 - AND with `WORKWIRE_HUB_URL` set, the environment wins over `skill.json`
-- AND with no `$TEAM_HUB_TOKEN`, the verb fails naming that variable rather than sending the local admin token
+- AND with no `$TEAM_HUB_TOKEN` and no literal token configured, the verb fails naming that variable rather than sending the local admin token
+
+#### Scenario: a stale autoJoin key is inert
+- GIVEN a `skill.json` still carrying `"autoJoin": true` from an older install
+- WHEN any verb reads it
+- THEN the key is ignored and no join happens because of it

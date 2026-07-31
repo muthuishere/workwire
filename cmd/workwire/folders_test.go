@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -11,47 +10,13 @@ import (
 	"testing"
 
 	"github.com/muthuishere/workwire/internal/config"
+	"github.com/muthuishere/workwire/internal/listen"
 )
 
-// captureStdout runs fn and returns whatever it printed.
-func captureStdout(t *testing.T, fn func()) string {
-	t.Helper()
-	r, w, err := os.Pipe()
-	if err != nil {
-		t.Fatal(err)
-	}
-	old := os.Stdout
-	os.Stdout = w
-	out := make(chan string, 1)
-	go func() {
-		b, _ := io.ReadAll(r)
-		out <- string(b)
-	}()
-	fn()
-	w.Close()
-	os.Stdout = old
-	s := <-out
-	r.Close()
-	return s
-}
-
-// chdir moves into dir for the rest of the test (the module targets go1.22,
-// so testing.Chdir is not available).
-func chdir(t *testing.T, dir string) {
-	t.Helper()
-	prev, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(prev) })
-}
-
 // Two folders called `api` are two peers, not one. The second must be told —
-// with the name to use instead — never silently merged onto the first's
-// identity while being told it joined.
+// with the name to use instead — never quietly put on the wire under the
+// first's identity, where `ask api "..."` is answered about a different
+// codebase.
 func TestTwoFoldersWithTheSameBasenameConflict(t *testing.T) {
 	cfgDir := t.TempDir()
 	root := t.TempDir()
@@ -63,62 +28,42 @@ func TestTwoFoldersWithTheSameBasenameConflict(t *testing.T) {
 		}
 	}
 	cfg := config.Config{ConfigDir: cfgDir, HubURL: "http://127.0.0.1:1"} // no hub
-	if err := setAutoJoin(skillConfigPath(cfg), true); err != nil {
-		t.Fatal(err)
-	}
 
-	var spawns []string
-	orig := spawnListener
-	spawnListener = func(_ config.Config, name, dir string) { spawns = append(spawns, name+" @ "+dir) }
-	defer func() { spawnListener = orig }()
+	// The first folder joined as `api` and bound the name to itself.
+	saveFolderBinding(cfg, first, "api")
 
-	chdir(t, first)
-	if err := cmdSessionStart(cfg, nil); err != nil {
-		t.Fatalf("first folder: %v", err)
-	}
-	if len(spawns) != 1 || !strings.HasPrefix(spawns[0], "api @ ") {
-		t.Fatalf("first folder should have joined as api: %v", spawns)
-	}
-
-	chdir(t, second)
-	out := captureStdout(t, func() {
-		if err := cmdSessionStart(cfg, nil); err != nil {
-			t.Fatalf("second folder must still exit 0: %v", err)
-		}
-	})
-	if len(spawns) != 1 {
-		t.Fatalf("the second folder joined under a shared identity: %v", spawns)
-	}
-	if !strings.Contains(out, "already the peer name") || !strings.Contains(out, "has NOT joined") {
-		t.Fatalf("the conflict was not reported: %q", out)
-	}
-	// With no hub to ask, the local disambiguation is offered.
-	if !strings.Contains(out, "b-api") {
-		t.Fatalf("no suggested name offered: %q", out)
-	}
-	// And it is on the record, not only on a stdout nobody reads.
-	logged, err := os.ReadFile(filepath.Join(cfgDir, "auto-join.log"))
-	if err != nil || !strings.Contains(string(logged), "already the peer name") {
-		t.Fatalf("conflict not logged: %v %s", err, logged)
-	}
-
-	// An explicit `workwire listen` from the second folder fails loudly rather
-	// than quietly adopting somebody else's identity.
-	err = cmdListen(cfg, []string{"--agent", "api", "--dir", second})
+	// The second folder wanting the same name is a conflict, not an adoption.
+	err := cmdListen(cfg, []string{"--agent", "api", "--dir", second})
 	if err == nil {
 		t.Fatal("listen from a colliding folder must not report success")
 	}
-	if !strings.Contains(err.Error(), "already the peer name") {
-		t.Fatalf("unhelpful conflict error: %v", err)
+	if !strings.Contains(err.Error(), "already the peer name") ||
+		!strings.Contains(err.Error(), absOf(first)) ||
+		!strings.Contains(err.Error(), absOf(second)) {
+		t.Fatalf("the conflict must name both folders: %v", err)
+	}
+	// With no hub to ask, the local disambiguation is offered.
+	if !strings.Contains(err.Error(), "b-api") {
+		t.Fatalf("no suggested name offered: %v", err)
+	}
+	// A folder that did not join is never bound.
+	if boundName(cfg, second) != "" {
+		t.Fatal("the losing folder must not be bound to the name")
 	}
 
-	// The first folder is unaffected: same name, same folder, still adopts.
-	chdir(t, first)
-	if err := cmdSessionStart(cfg, nil); err != nil {
-		t.Fatalf("re-running in the owning folder: %v", err)
+	// A live lock whose holder is another folder is a conflict too, even
+	// before anything was persisted.
+	fresh := config.Config{ConfigDir: t.TempDir(), HubURL: cfg.HubURL}
+	runDir := filepath.Join(fresh.ConfigDir, "run")
+	if err := listen.WriteHolder(runDir, "api", absOf(first)); err != nil {
+		t.Fatal(err)
 	}
-	if len(spawns) != 2 {
-		t.Fatalf("the owning folder must keep joining as api: %v", spawns)
+	if got := nameConflict(fresh, "api", second); got != absOf(first) {
+		t.Fatalf("lock holder ignored: %q", got)
+	}
+	// ...and the SAME folder is not.
+	if got := nameConflict(fresh, "api", first); got != "" {
+		t.Fatalf("the owning folder must not conflict with itself: %q", got)
 	}
 
 	// The binding is persisted, so the answer survives a restart.
@@ -133,8 +78,25 @@ func TestTwoFoldersWithTheSameBasenameConflict(t *testing.T) {
 	if ff.Folders[absOf(first)].Name != "api" {
 		t.Fatalf("binding not persisted: %s", b)
 	}
-	if _, ok := ff.Folders[absOf(second)]; ok {
-		t.Fatalf("a folder that did not join must not be bound: %s", b)
+}
+
+// Same folder, second session: still adoption, still exit 0.
+func TestSecondListenerInTheSameFolderAdopts(t *testing.T) {
+	cfgDir := t.TempDir()
+	dir := t.TempDir()
+	cfg := config.Config{ConfigDir: cfgDir, HubURL: "http://127.0.0.1:1"}
+	runDir := filepath.Join(cfgDir, "run")
+	lock, err := listen.AcquireLock(runDir, "peer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer lock.Release()
+	if err := listen.WriteHolder(runDir, "peer", absOf(dir)); err != nil {
+		t.Fatal(err)
+	}
+	saveFolderBinding(cfg, dir, "peer")
+	if err := cmdListen(cfg, []string{"--agent", "peer", "--dir", dir}); err != nil {
+		t.Fatalf("second listener in the same folder should adopt and exit 0, got: %v", err)
 	}
 }
 

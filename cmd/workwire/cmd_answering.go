@@ -15,11 +15,10 @@ import (
 // "I am gone".
 //
 // A listen lease means questions are being DELIVERED into a session inbox
-// file. It has never meant anyone is reading them, and auto-join makes that
-// divergence the resting state of a machine: a lease per folder, an answerer
-// only where a session actually engaged. So answerability is declared by the
-// thing that knows — the attached answerer — and `ask` / `peers` report it
-// separately from the lease.
+// file. It has never meant anyone is reading them — a listener outlives the
+// session that started it, and a folder can have a listener with no session
+// attached at all. So answerability is declared by the thing that knows — the
+// attached answerer — and `ask` / `peers` report it separately from the lease.
 //
 // The declaration is local evidence (a touched file the listener sees) plus a
 // best-effort hub call, so it works even while the hub is down.

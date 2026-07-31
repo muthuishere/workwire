@@ -1,12 +1,16 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/muthuishere/workwire/internal/config"
 )
 
-// skill.json's hubUrl / tokenEnv were unmarshalled and never read: setting
+// skill.json is created once and never overwritten, and its hubUrl / tokenEnv
+// (once dead keys nothing read) resolve in exactly one place: setting
 // them changed nothing, silently, while help and the docs advertised them.
 // They are now resolved in exactly one place, with a stated precedence:
 // flag > WORKWIRE_* env > skill.json > workwire.json > defaults.
@@ -43,7 +47,7 @@ func TestSkillConfigPrecedence(t *testing.T) {
 
 	t.Run("empty keys change nothing", func(t *testing.T) {
 		cfg := base()
-		applySkillConfig(&cfg, skillConfig{AutoJoin: true})
+		applySkillConfig(&cfg, skillConfig{AgentName: "api"})
 		if cfg.HubURL != "http://127.0.0.1:14411" || cfg.TokenEnv != "WORKWIRE_TOKEN" {
 			t.Fatalf("empty skill.json keys must not touch the config: %+v", cfg)
 		}
@@ -62,4 +66,38 @@ func TestSkillConfigPrecedence(t *testing.T) {
 			t.Fatalf("skill.json's remote hub was handed the local admin token: %q", c.token)
 		}
 	})
+}
+
+// skill.json is created ONCE and never overwritten: a hub or token-env setting
+// must survive a re-install. A stale `autoJoin` key from an older install is
+// ignored, never an error — auto-join is gone, but somebody's file still has it.
+func TestSkillConfigCreatedOnceAndTolerantOfOldKeys(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "skill.json")
+
+	created, err := ensureSkillConfig(path)
+	if err != nil || !created {
+		t.Fatalf("first ensure: created=%v err=%v", created, err)
+	}
+	if sc := loadSkillConfig(path); sc.HubURL != "" || sc.TokenEnv != "" || sc.AgentName != "" {
+		t.Fatalf("a fresh skill.json must be empty: %+v", sc)
+	}
+
+	// A user edit, a legacy key and an unknown key, then a re-install.
+	if err := os.WriteFile(path,
+		[]byte(`{"autoJoin":true,"agentName":"api","hubUrl":"https://team.example.com","future":"keep me"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	created, err = ensureSkillConfig(path)
+	if err != nil || created {
+		t.Fatalf("re-install must not recreate: created=%v err=%v", created, err)
+	}
+	sc := loadSkillConfig(path)
+	if sc.AgentName != "api" || sc.HubURL != "https://team.example.com" {
+		t.Fatalf("re-install clobbered the config: %+v", sc)
+	}
+	b, err := os.ReadFile(path)
+	if err != nil || !strings.Contains(string(b), "keep me") {
+		t.Fatalf("unknown keys must survive: %s (%v)", b, err)
+	}
 }

@@ -85,9 +85,9 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 			// same as answerable. `listener` is the delivery fact: a live listen
 			// lease exists, so questions are being written into a session inbox.
 			// `answering` is the answerability fact: something has declared
-			// itself attached to READ that inbox. Auto-join takes the lease for
-			// every folder while only an engaged session answers, so the two
-			// legitimately differ and are reported separately.
+			// itself attached to READ that inbox. A listener outlives the
+			// session that started it, so the two legitimately differ and are
+			// reported separately.
 			"listener":  s.registry.ListenerLive(a.Name),
 			"answering": s.registry.AnswererLive(a.Name),
 			"lastSeen":  a.LastSeen.UTC().Format(time.RFC3339Nano),
