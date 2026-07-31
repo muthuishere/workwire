@@ -69,7 +69,10 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 			"origin":       a.Origin,
 			"capabilities": a.Capabilities,
 			"skills":       a.Skills,
-			"lastSeen":     a.LastSeen.UTC().Format(time.RFC3339Nano),
+			// Registered is not the same as reachable: listener says whether a
+			// live listen lease exists, i.e. who can answer right now.
+			"listener": s.registry.ListenerLive(a.Name),
+			"lastSeen": a.LastSeen.UTC().Format(time.RFC3339Nano),
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"agents": out})
@@ -159,14 +162,21 @@ func (s *Server) handleAsk(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
-	env, status, errMsg := s.askCore(id, r.PathValue("name"), req.Text, req.ThreadID)
+	name := r.PathValue("name")
+	env, status, errMsg := s.askCore(id, name, req.Text, req.ThreadID)
 	if errMsg != "" {
 		writeErr(w, status, errMsg)
 		return
 	}
-	writeJSON(w, http.StatusAccepted, map[string]string{
-		"thread_id": env.ThreadID, "message_id": env.ID,
-	})
+	// The question is queued either way (an offline agent still receives
+	// asks), but the asker deserves to know nobody is listening rather than
+	// staring at a silent timeout.
+	out := map[string]any{"thread_id": env.ThreadID, "message_id": env.ID,
+		"listener": s.registry.ListenerLive(name)}
+	if a, ok := s.registry.Get(name); ok {
+		out["last_seen"] = a.LastSeen.UTC().Format(time.RFC3339Nano)
+	}
+	writeJSON(w, http.StatusAccepted, out)
 }
 
 // POST /agents/{name}/listen-lease (registry-a2a R10). Requires the agent's

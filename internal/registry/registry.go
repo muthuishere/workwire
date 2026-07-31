@@ -197,6 +197,11 @@ type RegisterResult struct {
 	Suggestion string // free-name suggestion on conflict
 	Agent      *Agent
 	Secret     string // returned exactly once, on Created
+	// KindConflict is a 409 of a different shape: the caller holds the right
+	// credential but asked to change an established `kind`. KindWas names the
+	// kind that stands (ADR-011 §3).
+	KindConflict bool
+	KindWas      string
 }
 
 // Register implements POST /agents: first registration mints identity,
@@ -221,7 +226,18 @@ func (r *Registry) Register(card Card, presentedSecret string) RegisterResult {
 		existing.Project = card.Project
 		existing.Persona = card.Persona
 		existing.AskPolicy = card.AskPolicy
-		existing.Kind = NormalizeKind(card.Kind)
+		// `kind` is pinned once established: a peer that registered as an
+		// agent cannot quietly acquire human decision precedence (ADR-011 §3)
+		// by re-registering, and a human cannot be demoted by a card that
+		// simply omitted the flag. A card with no `kind` keeps what stands.
+		if card.Kind != "" && NormalizeKind(card.Kind) != NormalizeKind(existing.Kind) {
+			return RegisterResult{
+				KindConflict: true,
+				KindWas:      NormalizeKind(existing.Kind),
+				Agent:        existing,
+			}
+		}
+		existing.Kind = NormalizeKind(existing.Kind)
 		if card.Origin != nil {
 			existing.Origin = card.Origin
 		}
@@ -353,6 +369,16 @@ func (r *Registry) AcquireLease(name, presentedLeaseID string) LeaseResult {
 	nl := &Lease{LeaseID: envelope.NewID("l"), AgentID: a.AgentID, Renewed: now}
 	r.leases[name] = nl
 	return LeaseResult{OK: true, LeaseID: nl.LeaseID, TTL: ttlSecs}
+}
+
+// ListenerLive reports whether a live listen lease exists for the agent —
+// i.e. whether anyone is actually there to answer right now, as opposed to
+// merely being registered. Discovery (Live/Get) is deliberately looser.
+func (r *Registry) ListenerLive(name string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	l, ok := r.leases[name]
+	return ok && r.now().Sub(l.Renewed) <= r.ttl
 }
 
 // ReleaseLease implements DELETE /agents/<name>/listen-lease with the

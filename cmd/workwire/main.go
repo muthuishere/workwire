@@ -169,7 +169,7 @@ func cmdServe(cfg config.Config) error {
 	go func() {
 		for {
 			time.Sleep(time.Hour)
-			_ = st.EnforceRetention(time.Now())
+			_ = st.Maintain(time.Now())
 		}
 	}()
 	addr := fmt.Sprintf("%s:%d", cfg.Bind, cfg.Port)
@@ -385,7 +385,14 @@ func cmdPeers(cfg config.Config) error {
 		if m, ok := a["origin"].(map[string]any); ok {
 			prov = origin.FromMap(m).String()
 		}
-		fmt.Printf("%-7s  %-16v %-34s %v\n", kind, a["name"], prov, about)
+		// A peer with no live listen lease is registered but cannot answer
+		// right now; say so rather than implying it is reachable.
+		live, _ := a["listener"].(bool)
+		mark := ""
+		if !live {
+			mark = "  [no live listener]"
+		}
+		fmt.Printf("%-7s  %-16v %-34s %v%s\n", kind, a["name"], prov, about, mark)
 	}
 	for _, ct := range cts.Contacts {
 		fmt.Printf("contact  %-24v verified=%v\n", ct["name"], ct["verified"])
@@ -417,6 +424,8 @@ func cmdAsk(cfg config.Config, args []string) error {
 	var out struct {
 		ThreadID  string `json:"thread_id"`
 		MessageID string `json:"message_id"`
+		Listener  bool   `json:"listener"`
+		LastSeen  string `json:"last_seen"`
 		Error     string `json:"error"`
 	}
 	code, err := c.do("POST", "/agents/"+url.PathEscape(target)+"/ask", map[string]string{"text": question}, &out)
@@ -425,6 +434,13 @@ func cmdAsk(cfg config.Config, args []string) error {
 	}
 	if code != 202 {
 		return fmt.Errorf("ask failed (%d): %s", code, out.Error)
+	}
+	if !out.Listener {
+		// Queued delivery is correct and valuable — but silence is not. Say
+		// why nothing is happening instead of timing out five minutes later.
+		fmt.Fprintf(os.Stderr,
+			"warning: %s is registered but has no live listener%s — the question is queued and will be answered when its session comes back\n",
+			target, lastSeenPhrase(out.LastSeen))
 	}
 	fmt.Fprintf(os.Stderr, "asked %s (thread %s); waiting for the answer...\n", target, out.ThreadID)
 	deadline := time.Now().Add(*timeout)
@@ -458,6 +474,20 @@ func cmdAsk(cfg config.Config, args []string) error {
 		}
 	}
 	return fmt.Errorf("no answer within %s", *timeout)
+}
+
+// lastSeenPhrase renders " (last seen 12m ago)" from an RFC3339 timestamp,
+// or nothing at all when the hub did not report one.
+func lastSeenPhrase(ts string) string {
+	t, err := time.Parse(time.RFC3339Nano, ts)
+	if err != nil {
+		return ""
+	}
+	d := time.Since(t).Round(time.Second)
+	if d < 0 {
+		d = 0
+	}
+	return fmt.Sprintf(" (last seen %s ago)", d)
 }
 
 // parseInterspersed parses flags that may appear before, between, or after

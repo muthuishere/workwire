@@ -475,11 +475,12 @@ func (s *Server) handleListThreads(w http.ResponseWriter, r *http.Request) {
 
 // DELETE /messages/{id} — tombstone one envelope (hub-core R13).
 func (s *Server) handleDeleteMessage(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.identify(w, r); !ok {
+	id, ok := s.identify(w, r)
+	if !ok {
 		return
 	}
-	id := r.PathValue("id")
-	found, err := s.store.TombstoneMessage(id)
+	msgID := r.PathValue("id")
+	found, err := s.store.TombstoneMessage(msgID, id.Name())
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "tombstone write failed")
 		return
@@ -488,16 +489,17 @@ func (s *Server) handleDeleteMessage(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "message not found")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"id": id, "tombstoned": true})
+	writeJSON(w, http.StatusOK, map[string]any{"id": msgID, "tombstoned": true})
 }
 
 // DELETE /threads/{id} — tombstone every envelope on the thread.
 func (s *Server) handleDeleteThread(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.identify(w, r); !ok {
+	id, ok := s.identify(w, r)
+	if !ok {
 		return
 	}
-	id := r.PathValue("id")
-	found, err := s.store.TombstoneThread(id)
+	threadID := r.PathValue("id")
+	found, err := s.store.TombstoneThread(threadID, id.Name())
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, "tombstone write failed")
 		return
@@ -506,5 +508,5 @@ func (s *Server) handleDeleteThread(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "thread not found")
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"thread_id": id, "tombstoned": true})
+	writeJSON(w, http.StatusOK, map[string]any{"thread_id": threadID, "tombstoned": true})
 }

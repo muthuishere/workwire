@@ -1131,3 +1131,72 @@ func TestOpenMode(t *testing.T) {
 		t.Fatalf("open-mode send: %d %v", code, out)
 	}
 }
+
+// --- listener liveness: registered is not the same as reachable ---
+
+// A peer with no live listen lease cannot answer right now. The hub says so
+// on ask and in the agents listing, so an asker is never left staring at a
+// silent five-minute timeout wondering why.
+func TestListenerLivenessSurfaced(t *testing.T) {
+	h := newHub(t, nil)
+	asker := h.register("asker")
+	h.register("quiet") // registered, never listened
+	target := h.register("live")
+	if code, _ := h.req(target, "POST", "/agents/live/listen-lease", map[string]any{}); code != 200 {
+		t.Fatal("lease setup failed")
+	}
+
+	tests := []struct {
+		name string
+		to   string
+		want bool
+	}{
+		{"registered with no listener", "quiet", false},
+		{"registered and listening", "live", true},
+	}
+	for _, tc := range tests {
+		t.Run("ask reports "+tc.name, func(t *testing.T) {
+			code, out := h.req(asker, "POST", "/agents/"+tc.to+"/ask", map[string]any{"text": "hello?"})
+			if code != 202 {
+				t.Fatalf("ask: %d %v", code, out)
+			}
+			if got, _ := out["listener"].(bool); got != tc.want {
+				t.Fatalf("listener=%v want %v (%v)", got, tc.want, out)
+			}
+			if out["last_seen"] == nil || out["last_seen"] == "" {
+				t.Fatalf("ask must report last_seen: %v", out)
+			}
+			// The question is queued either way — never dropped.
+			if out["message_id"] == "" {
+				t.Fatalf("question not queued: %v", out)
+			}
+		})
+	}
+
+	t.Run("agents listing marks liveness", func(t *testing.T) {
+		code, out := h.req(asker, "GET", "/agents", nil)
+		if code != 200 {
+			t.Fatalf("list: %d", code)
+		}
+		got := map[string]bool{}
+		for _, a := range out["agents"].([]any) {
+			m := a.(map[string]any)
+			live, _ := m["listener"].(bool)
+			got[m["name"].(string)] = live
+		}
+		if got["live"] != true || got["quiet"] != false {
+			t.Fatalf("liveness in listing: %v", got)
+		}
+	})
+
+	t.Run("a held lease keeps reading as live", func(t *testing.T) {
+		code, out := h.req(target, "POST", "/agents/live/listen-lease", map[string]any{})
+		if code != 409 {
+			t.Fatalf("expected the lease to still be held: %d %v", code, out)
+		}
+		_, lo := h.req(asker, "POST", "/agents/live/ask", map[string]any{"text": "still there?"})
+		if live, _ := lo["listener"].(bool); !live {
+			t.Fatal("held lease must read as a live listener")
+		}
+	})
+}
