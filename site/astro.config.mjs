@@ -51,7 +51,7 @@ export default defineConfig({
 							slug: 'scenarios/targeted-discussion-with-groups',
 						},
 						{
-							label: 'Onboard a peer with AGENTS.md',
+							label: 'Onboard a peer',
 							slug: 'scenarios/onboard-a-peer-with-agents-md',
 						},
 						{ label: 'An external client', slug: 'scenarios/an-external-client' },

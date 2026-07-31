@@ -69,7 +69,7 @@ A peer normally does not run `group join` at all. A `groups:` line in the direct
 groups: @platform, @data
 ```
 
-See [onboard a peer with AGENTS.md](/workwire/scenarios/onboard-a-peer-with-agents-md/).
+See [onboard a peer](/workwire/scenarios/onboard-a-peer-with-agents-md/).
 `workwire listen --groups @platform,@data` overrides the declaration for one run.
 
 **Self-service only.** Both verbs join *the authenticated caller* and nobody else.

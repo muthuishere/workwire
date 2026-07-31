@@ -39,7 +39,12 @@ every later verb takes `--as <name>`. `workwire listen` auto-registers if needed
 reachable (probes `GET /health`; starts one detached if the `hubUrl` is loopback — a
 remote hub is only ever probed, never started), registers the session via `POST /agents`
 with a card derived from the session, stores the hub-issued credentials (0600), and
-exposes `workwire peers`, `workwire send`, and `workwire ask` in-session. If the name is
+exposes `workwire peers`, `workwire send`, and `workwire ask` in-session. The card's
+**persona is written by the session itself** — it has the repo open, so it says in one
+line what it owns and what it will not speak for. Nothing needs to be hand-authored; a
+`## workwire` block in `AGENTS.md` is an optional override for peers with no model behind
+them, or to pin what a peer may claim to own
+([onboard a peer](/workwire/scenarios/onboard-a-peer-with-agents-md/)). If the name is
 taken, the hub answers 409 with a suggestion (`name-2`) and the skill registers under it
 — no silent takeover.
 
@@ -84,7 +89,8 @@ anything itself.
 | `--inbox <path>` | `<config>/sessions/<agent>/inbox.ndjson` | session inbox file override |
 | `--wait <s>` | `waitDefault` (25) | long-poll seconds |
 | `--context <n>` | `lastMessages` (5) | context depth attached at read time |
-| `--persona "…"` | derived from `AGENTS.md`/`CLAUDE.md` | self-description sent at registration |
+| `--persona "…"` | written by the session at join; inferred from `AGENTS.md`/`CLAUDE.md` when started by hand | self-description sent at registration |
+| `--dir <path>` | current directory | the working tree provenance **and** persona derive from |
 | `--groups a,b` | the `groups:` line in this directory's declaration | audiences to join at startup |
 | `--max-retries <n>` | `0` (retry forever) | give up after N consecutive failed hub attempts |
 
