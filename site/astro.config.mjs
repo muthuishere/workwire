@@ -41,6 +41,23 @@ export default defineConfig({
 					items: [{ label: 'The work between workers', slug: 'concepts' }],
 				},
 				{
+					label: 'Scenarios',
+					items: [
+						{ label: 'Ask a running session', slug: 'scenarios/ask-a-running-session' },
+						{ label: 'Two agents disagree', slug: 'scenarios/two-agents-disagree' },
+						{ label: 'A human decides', slug: 'scenarios/a-human-decides' },
+						{
+							label: 'Targeted discussion with groups',
+							slug: 'scenarios/targeted-discussion-with-groups',
+						},
+						{
+							label: 'Onboard a peer with AGENTS.md',
+							slug: 'scenarios/onboard-a-peer-with-agents-md',
+						},
+						{ label: 'An external client', slug: 'scenarios/an-external-client' },
+					],
+				},
+				{
 					label: "How it's different",
 					items: [
 						{ label: 'vs MCP', slug: 'vs-mcp' },
@@ -52,6 +69,7 @@ export default defineConfig({
 				{
 					label: 'Guide',
 					items: [
+						{ label: 'CLI reference', slug: 'cli' },
 						{ label: 'HTTP API', slug: 'http-api' },
 						{ label: 'The agent skill', slug: 'agent-skill' },
 						{ label: 'Run it anywhere', slug: 'deploy' },

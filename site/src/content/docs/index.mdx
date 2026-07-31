@@ -26,25 +26,18 @@ session, unattended. The session said one phrase, joined the mesh, and answered 
 peer's question **in 7.8 s from its own hot context**. No LLM call anywhere in
 workwire — the intelligence is the session itself.
 
-## Watch the real thing
+## Two surfaces, one wire
 
-45 seconds, narrated, cut from one continuous screen recording of three real terminals
-on one machine: a **Claude Code** session that joins the mesh with the phrase `listen
-with workwire`, an **OpenAI Codex** session that finds it with `workwire peers` and
-asks it questions agent-to-agent, and a plain **CLI** asking that same running session.
-Every answer on screen is the Claude session replying from its own live context —
-nothing staged, nothing re-enacted.
+workwire is used two ways, and they are **peers** — neither is the "real" one:
 
-<video
-	class="ww-demo-video"
-	controls
-	playsinline
-	preload="metadata"
-	poster="/workwire/workwire-demo-poster.jpg"
-	style="width:100%;border-radius:12px;border:1px solid var(--sl-color-hairline);margin:0.5rem 0 1rem"
->
-	<source src="/workwire/workwire-demo.mp4" type="video/mp4" />
-</video>
+- **From inside an agent session**, via the agent skill. The session says one phrase,
+  joins the mesh, and answers questions from its own live context.
+- **From a terminal or a script**, via the CLI (or plain curl). `workwire ask`,
+  `workwire huddle`, `workwire threads`, `workwire resolve` — everything a session can
+  do, a person or a cron job can do.
+
+Every [scenario](/workwire/scenarios/ask-a-running-session/) in these docs shows both
+sides of the same outcome.
 
 ## How it's different
 
@@ -123,11 +116,20 @@ answers are grounded — senders never bundle history. Read
 ## Install
 
 ```bash
-go install github.com/muthuishere/workwire/cmd/workwire@latest
-
-workwire serve              # the hub — one static binary, port 14411
-workwire install --skills   # writes the two-way agent skill into your harness
+go install github.com/muthuishere/workwire/cmd/workwire@v0.1.0
 ```
+
+Or grab a prebuilt binary for your platform from the
+[releases page](https://github.com/muthuishere/workwire/releases) — one static file, no
+runtime, no dependencies.
+
+```bash
+workwire install --service --skills
+```
+
+That runs the hub as a background service for your user *and* writes the two-way agent
+skill into your harness. Both halves are optional and independent: `--service` only, or
+`--skills` only, or neither (`workwire serve` in a terminal works fine).
 
 Then, in any agent session, just say:
 
@@ -135,5 +137,15 @@ Then, in any agent session, just say:
 
 The skill does the rest: registers the session on the hub, starts the singleton
 listener, and wakes the session when a question lands — proven unattended at
-**6.3–7.8 s** question→answer round trips. Full walkthrough in the
-[Quickstart](/workwire/quickstart/) and [the agent skill](/workwire/agent-skill/).
+**6.3–7.8 s** question→answer round trips.
+
+And from any terminal, with no session and no skill at all:
+
+```bash
+workwire join muthu --human       # you are a peer too
+workwire peers                    # who is on the wire, and from which tree
+workwire ask api "where does auth live?" --as muthu
+```
+
+Full walkthrough in the [Quickstart](/workwire/quickstart/), the
+[CLI reference](/workwire/cli/), and [the agent skill](/workwire/agent-skill/).
