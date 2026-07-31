@@ -137,6 +137,20 @@ func (h *hub) register(name string) string {
 	return sec
 }
 
+// registerKind registers a peer declaring an explicit kind (ADR-011 §3).
+func (h *hub) registerKind(name, kind string) string {
+	h.t.Helper()
+	code, out := h.req(adminToken, "POST", "/agents", map[string]any{"name": name, "kind": kind})
+	if code != 201 {
+		h.t.Fatalf("register %s as %s: got %d %v", name, kind, code, out)
+	}
+	sec, _ := out["agentSecret"].(string)
+	if sec == "" {
+		h.t.Fatalf("register %s: empty secret", name)
+	}
+	return sec
+}
+
 func msgsOf(out map[string]any) []map[string]any {
 	raw, _ := out["messages"].([]any)
 	var res []map[string]any
@@ -1199,4 +1213,115 @@ func TestListenerLivenessSurfaced(t *testing.T) {
 			t.Fatal("held lease must read as a live listener")
 		}
 	})
+}
+
+// F2: GET /threads is a read, so R13 excision applies to it — the topic and
+// dissent text served to EVERY authenticated peer must not survive a DELETE.
+func TestListThreadsHonoursTombstones(t *testing.T) {
+	h := newHub(t, nil)
+	muthu := h.registerKind("muthu", "human")
+	priya := h.registerKind("priya", "human")
+	stranger := h.register("stranger")
+
+	_, sent := h.req(muthu, "POST", "/send",
+		map[string]any{"to": "priya", "text": "TOPIC-SECRET-sk-123"})
+	tid := sent["thread_id"].(string)
+	_, diss := h.req(priya, "POST", "/send",
+		map[string]any{"thread_id": tid, "kind": "dissent", "text": "DISSENT-SECRET-sk-456"})
+
+	leaks := func(stage string, secrets ...string) {
+		t.Helper()
+		_, out := h.req(stranger, "GET", "/threads", nil)
+		body, _ := json.Marshal(out)
+		for _, secret := range secrets {
+			if strings.Contains(string(body), secret) {
+				t.Fatalf("%s: GET /threads leaks deleted text %q", stage, secret)
+			}
+		}
+	}
+
+	// Delete one at a time, so the thread is never FULLY deleted: this has to
+	// catch the text leak on its own, not be masked by the thread dropping out
+	// of the listing.
+	if code, _ := h.req(muthu, "DELETE", "/messages/"+sent["id"].(string), nil); code != 200 {
+		t.Fatal("delete topic")
+	}
+	leaks("topic deleted", "TOPIC-SECRET-sk-123")
+	if code, _ := h.req(muthu, "DELETE", "/messages/"+diss["id"].(string), nil); code != 200 {
+		t.Fatal("delete dissent")
+	}
+	leaks("dissent deleted", "TOPIC-SECRET-sk-123", "DISSENT-SECRET-sk-456")
+
+	// The 409 close-rejection body quotes open dissents; it must not quote a
+	// deleted one either.
+	_, out := h.req(priya, "POST", "/send",
+		map[string]any{"thread_id": tid, "kind": "dissent", "text": "still-open"})
+	_ = out
+	code, rej := h.req(muthu, "POST", "/send", map[string]any{"thread_id": tid, "kind": "resolved", "text": ""})
+	body, _ := json.Marshal(rej)
+	if code == 200 && strings.Contains(string(body), "sk-456") {
+		t.Fatalf("dissent rejection body leaks deleted text: %s", body)
+	}
+	if strings.Contains(string(body), "sk-456") {
+		t.Fatalf("dissent rejection body leaks deleted text: %s", body)
+	}
+
+	// A fully deleted thread drops out of discovery entirely (R22).
+	if code, _ := h.req(muthu, "DELETE", "/threads/"+tid, nil); code != 200 {
+		t.Fatal("delete thread")
+	}
+	_, list := h.req(stranger, "GET", "/threads", nil)
+	for _, e := range list["threads"].([]any) {
+		if e.(map[string]any)["thread_id"] == tid {
+			t.Fatal("GET /threads lists a fully deleted thread")
+		}
+	}
+}
+
+// F5: `kind` decides decision precedence (ADR-011), so it may not be rewritten
+// by a later registration under the same credential.
+func TestKindIsPinnedAcrossReregistration(t *testing.T) {
+	cases := []struct {
+		name     string
+		first    string
+		again    any // nil = card omits kind entirely
+		wantCode int
+		wantKind string
+	}{
+		{"human stays human when kind omitted", "human", nil, 200, "human"},
+		{"human may not become agent", "human", "agent", 409, "human"},
+		{"agent may not become human", "agent", "human", 409, "agent"},
+		{"agent stays agent when kind omitted", "agent", nil, 200, "agent"},
+		{"restating the same kind is fine", "human", "human", 200, "human"},
+	}
+	for i, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHub(t, nil)
+			name := fmt.Sprintf("peer%d", i)
+			sec := h.registerKind(name, tc.first)
+			card := map[string]any{"name": name, "description": "rejoined"}
+			if tc.again != nil {
+				card["kind"] = tc.again
+			}
+			code, out := h.req(sec, "POST", "/agents", card)
+			if code != tc.wantCode {
+				t.Fatalf("re-register: got %d %v, want %d", code, out, tc.wantCode)
+			}
+			if tc.wantCode == 409 {
+				if out["kind"] != tc.wantKind {
+					t.Fatalf("409 body must name the kind that stands, got %v", out)
+				}
+				if d, _ := out["detail"].(string); !strings.Contains(d, tc.wantKind) {
+					t.Fatalf("409 detail must name the existing kind: %v", out)
+				}
+			}
+			_, agents := h.req(sec, "GET", "/agents", nil)
+			for _, a := range agents["agents"].([]any) {
+				am := a.(map[string]any)
+				if am["name"] == name && am["kind"] != tc.wantKind {
+					t.Fatalf("kind = %v, want %q", am["kind"], tc.wantKind)
+				}
+			}
+		})
+	}
 }

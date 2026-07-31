@@ -45,6 +45,18 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{
 			"agentId": res.Agent.AgentID, "name": res.Agent.Name,
 		})
+	case res.KindConflict:
+		// Right credential, wrong ask: the card tried to change an established
+		// kind. Nothing is updated — a silent flip would move decision
+		// precedence (ADR-011 §3).
+		writeJSON(w, http.StatusConflict, map[string]string{
+			"error": "kind is fixed",
+			"name":  card.Name,
+			"kind":  res.KindWas,
+			"detail": fmt.Sprintf(
+				"%s is already registered as a %s and a peer's kind cannot change on re-registration — re-register without a \"kind\", or join under a different name",
+				card.Name, res.KindWas),
+		})
 	default: // conflict — existing registration untouched, no takeover
 		writeJSON(w, http.StatusConflict, map[string]string{
 			"error": "name taken", "name": card.Name, "suggestion": res.Suggestion,

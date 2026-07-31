@@ -48,7 +48,10 @@ func cmdJoin(cfg config.Config, args []string) error {
 	if cfg.ConfigDir == "" {
 		return fmt.Errorf("no config dir resolvable; set WORKWIRE_CONFIG_DIR")
 	}
-	kind := registry.KindAgent
+	// Only an explicit --human declares a kind. Omitting it must not demote a
+	// person to an agent on a later rejoin: the hub pins an established kind
+	// and rejects a change (ADR-011 §3), so an empty kind means "leave it".
+	kind := ""
 	if *human {
 		kind = registry.KindHuman
 	}
@@ -60,10 +63,12 @@ func cmdJoin(cfg config.Config, args []string) error {
 	}
 	card := map[string]any{
 		"name":         name,
-		"kind":         kind,
 		"origin":       prov,
 		"project":      prov.Cwd,
 		"capabilities": []string{"ask"},
+	}
+	if kind != "" {
+		card["kind"] = kind
 	}
 	if *persona != "" {
 		card["persona"] = *persona
