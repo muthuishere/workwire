@@ -26,22 +26,24 @@ func cmdListen(cfg config.Config, args []string) error {
 	wait := fs.Int("wait", cfg.WaitDefault, "long-poll seconds")
 	ctxDepth := fs.Int("context", cfg.LastMessages, "context depth attached at read time")
 	persona := fs.String("persona", "", "short self-description sent at registration: who this worker is, what it owns, what it will not speak for")
+	dir := fs.String("dir", "", "working tree provenance and persona are derived from (default: cwd)")
 	maxRetries := fs.Int("max-retries", 0, "give up after N consecutive failed hub attempts (default 0 = retry forever)")
 	groups := fs.String("groups", "", "comma-separated audiences to join (default: the `groups:` line in this directory's AGENTS.md / CLAUDE.md)")
 	fs.Parse(args)
 	if *agent == "" {
 		return fmt.Errorf("listen requires --agent <name>")
 	}
-	// Persona comes from this directory's own AGENTS.md / CLAUDE.md unless
-	// the caller overrode it — one capped line, never the whole file.
+	// Persona comes from --dir (or cwd) — the tree this listener speaks for —
+	// unless the caller stated one; one capped line, never the whole file.
+	personaExplicit := *persona != ""
 	if *persona == "" {
-		*persona = persona_.Derive("")
+		*persona = persona_.Derive(*dir)
 	}
 	// Audiences come from the same declaration file as the persona
 	// (ADR-012): write the file, say the phrase. @all is joined by the hub.
 	declared := persona_.GroupsFromMarkdown("groups: " + *groups)
 	if *groups == "" {
-		declared = persona_.DeriveGroups("")
+		declared = persona_.DeriveGroups(*dir)
 	}
 	if cfg.ConfigDir == "" {
 		return fmt.Errorf("no config dir resolvable; set WORKWIRE_CONFIG_DIR")
@@ -74,11 +76,15 @@ func cmdListen(cfg config.Config, args []string) error {
 		Wait:       *wait,
 		Context:    *ctxDepth,
 		Persona:    *persona,
-		Groups:     declared,
-		Heartbeat:  time.Duration(cfg.HeartbeatSeconds) * time.Second,
-		InboxPath:  *inbox,
-		MaxRetries: *maxRetries,
-		Logf:       logf,
+		// An explicit --persona is a deliberate act and always wins; an
+		// inferred one never overwrites what the peer already registered.
+		PersonaExplicit: personaExplicit,
+		OriginDir:       *dir,
+		Groups:          declared,
+		Heartbeat:       time.Duration(cfg.HeartbeatSeconds) * time.Second,
+		InboxPath:       *inbox,
+		MaxRetries:      *maxRetries,
+		Logf:            logf,
 	})
 	if err != nil {
 		return err

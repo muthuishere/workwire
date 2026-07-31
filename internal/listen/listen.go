@@ -35,6 +35,11 @@ type Options struct {
 	// the skill from the repo's own CLAUDE.md / AGENTS.md; sent at
 	// registration so peers know which vantage point is talking.
 	Persona string
+	// PersonaExplicit marks Persona as stated on the command line rather than
+	// inferred. An explicit persona always overwrites the stored one — that is
+	// a deliberate act; an inferred one never overwrites a persona the peer
+	// already registered from this same tree.
+	PersonaExplicit bool
 	// Kind is "agent" (default) or "human" (ADR-011 §3).
 	Kind string
 	// Groups are the audiences this peer declared in its own AGENTS.md /
@@ -86,6 +91,11 @@ type Runner struct {
 	// contendedUntil is the expiry the hub reported for a lease held by
 	// another host, used to retry on roughly lease cadence.
 	contendedUntil time.Time
+	// pinnedPersona/pinnedProject are the identity fields the hub already
+	// holds for this peer, kept as-is when this listener starts from the very
+	// same tree — restarting from the same folder must change nothing.
+	pinnedPersona string
+	pinnedProject string
 }
 
 // condition classifies why the listener is not currently connected. Every one
@@ -93,12 +103,12 @@ type Runner struct {
 type condition int
 
 const (
-	condOK         condition = iota // connected and polling
-	condUnreachable                 // hub down / restarting / network error
-	condLeaseLost                   // lease gone or the hub forgot it
-	condRejected                    // our credential or agent is unknown to the hub
-	condContended                   // another host legitimately holds the lease
-	condOther                       // anything else transient
+	condOK          condition = iota // connected and polling
+	condUnreachable                  // hub down / restarting / network error
+	condLeaseLost                    // lease gone or the hub forgot it
+	condRejected                     // our credential or agent is unknown to the hub
+	condContended                    // another host legitimately holds the lease
+	condOther                        // anything else transient
 )
 
 func (c condition) String() string {
@@ -313,6 +323,9 @@ func (r *Runner) EnsureRegistered() error {
 	}
 	if c, ok := creds[r.agentName]; ok {
 		r.secret = c.AgentSecret
+		// Same credential, so this is the same peer: keep its identity unless
+		// the tree really moved (and say so out loud when it did).
+		r.reconcileIdentity()
 		// Re-register/heartbeat with the stored secret: same identity.
 		card := r.card(r.agentName)
 		code, err := r.do("POST", "/agents", r.secret, card, nil)
@@ -362,25 +375,107 @@ func (r *Runner) EnsureRegistered() error {
 	return fmt.Errorf("could not register: every suggested name was taken")
 }
 
+// originDir is the working tree this listener speaks for: --dir when stated,
+// otherwise wherever the shell happened to be.
+func (r *Runner) originDir() string {
+	if r.opts.OriginDir != "" {
+		return r.opts.OriginDir
+	}
+	dir, _ := os.Getwd()
+	return dir
+}
+
 // card is the registration body. Provenance is re-derived every time it is
 // built, so the heartbeat re-registration picks up a branch switch made
-// mid-session (ADR-011 §1).
+// mid-session (ADR-011 §1). Identity fields (persona, project) are pinned to
+// what the hub already holds when this listener started in the same tree, so
+// a restart is free: it refreshes liveness, not identity.
 func (r *Runner) card(name string) map[string]any {
-	dir := r.opts.OriginDir
-	if dir == "" {
-		dir, _ = os.Getwd()
+	dir := r.originDir()
+	project := dir
+	if r.pinnedProject != "" {
+		project = r.pinnedProject
 	}
 	card := map[string]any{
 		"name":         name,
-		"project":      dir,
+		"project":      project,
 		"capabilities": []string{"ask"},
 		"kind":         registry.NormalizeKind(r.opts.Kind),
 		"origin":       origin.Detect(dir),
 	}
-	if r.opts.Persona != "" {
-		card["persona"] = r.opts.Persona
+	persona := r.opts.Persona
+	if !r.opts.PersonaExplicit && r.pinnedPersona != "" {
+		persona = r.pinnedPersona
+	}
+	if persona != "" {
+		card["persona"] = persona
 	}
 	return card
+}
+
+// storedIdentity is the hub's current view of this peer: the persona and the
+// provenance it is registered with.
+func (r *Runner) storedIdentity() (string, *origin.Info, bool) {
+	var out struct {
+		Persona string       `json:"persona"`
+		Origin  *origin.Info `json:"origin"`
+	}
+	code, err := r.do("GET", "/agents/"+url.PathEscape(r.agentName)+"/card", r.secret, nil, &out)
+	if err != nil || code != 200 {
+		return "", nil, false
+	}
+	return out.Persona, out.Origin, true
+}
+
+// reconcileIdentity compares the tree this listener was started in against
+// the one the peer is already registered from.
+//
+//   - Same tree: pin persona and project so re-registration rewrites nothing.
+//     Branch, commit and dirty still refresh — those legitimately change
+//     mid-session; repo, cwd and persona do not.
+//   - Different repo: warn, naming both, and point at --dir — then proceed,
+//     because a genuine repo move must work. What must never happen is the
+//     silent version: a listener restarted from the wrong folder quietly
+//     making a peer misrepresent which codebase it speaks for.
+func (r *Runner) reconcileIdentity() {
+	storedPersona, stored, ok := r.storedIdentity()
+	if !ok || stored == nil {
+		return
+	}
+	now := origin.Detect(r.originDir())
+	if stored.Repo != "" && now.Repo != "" && stored.Repo != now.Repo {
+		r.opts.Logf("WARNING: %s is registered from %s but this listener started in %s — re-registering it under the new tree. "+
+			"If that is wrong, stop and restart with --dir %s", r.agentName, provLabel(stored), provLabel(now), stored.Cwd)
+		return
+	}
+	if stored.Repo != now.Repo || stored.Cwd != now.Cwd {
+		return // same repo, different checkout: a real change, applied quietly
+	}
+	if !r.opts.PersonaExplicit && storedPersona != "" {
+		r.pinnedPersona = storedPersona
+	}
+	if stored.Cwd != "" {
+		r.pinnedProject = stored.Cwd
+	}
+}
+
+// provLabel renders `repo@branch` (or the cwd when there is no repo) for the
+// mismatch warning — enough for a human to see which tree is which.
+func provLabel(i *origin.Info) string {
+	if i == nil {
+		return "(unknown)"
+	}
+	if i.Repo == "" {
+		return i.Cwd
+	}
+	s := i.Repo
+	if i.Branch != "" {
+		s += "@" + i.Branch
+	}
+	if i.Cwd != "" {
+		s += " (" + i.Cwd + ")"
+	}
+	return s
 }
 
 // Heartbeat re-registers the current card, refreshing provenance on the hub.
