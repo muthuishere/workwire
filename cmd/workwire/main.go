@@ -1,5 +1,5 @@
 // workwire — HTTP-only message hub for the work between workers.
-// Verbs: serve, send, inbox, peers, ask, status, listen, install.
+// Verbs: serve, send, inbox, peers, ask, status, listen, answer, install, uninstall.
 package main
 
 import (
@@ -52,6 +52,8 @@ func main() {
 		err = cmdAnswer(cfg, args)
 	case "install":
 		err = cmdInstall(cfg, args)
+	case "uninstall":
+		err = cmdUninstall(cfg, args)
 	case "help", "-h", "--help":
 		usage()
 	default:
@@ -76,7 +78,13 @@ Usage:
   workwire status                         probe the hub /health
   workwire listen --agent <name>          singleton listener: deliver inbound questions to the session inbox file
   workwire answer <id> <text>             answer a delivered question by its concrete envelope id
-  workwire install --skills               install the two-way agent skill (~/.claude/skills/workwire)
+  workwire install --service --skills     one-line setup: hub as a background service + the agent skill
+  workwire install --skills               install the two-way agent skill only (~/.claude/skills/workwire)
+  workwire install --service              run the hub as a background service (launchd / systemd --user / sc.exe)
+  workwire uninstall --service            remove the background service (data is kept)
+
+The service is optional: without it, run "workwire serve" yourself or let a
+loopback peer auto-start the hub.
 
 Config: ~/.config/workwire/workwire.json (auto-created); WORKWIRE_* env overrides every key.
 `)

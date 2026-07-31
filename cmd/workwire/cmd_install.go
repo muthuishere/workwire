@@ -7,8 +7,10 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/muthuishere/workwire/internal/config"
+	"github.com/muthuishere/workwire/internal/service"
 )
 
 // The two-way agent skill payload is compiled into the binary (ADR-003,
@@ -17,19 +19,68 @@ import (
 //go:embed skills/workwire
 var skillFS embed.FS
 
-// cmdInstall writes the embedded skill into the harness skills directory.
-// Idempotent: re-install replaces skill files only — credentials, cursors,
-// and session inbox files are never touched.
-func cmdInstall(cfg config.Config, args []string) error {
-	fs_ := flag.NewFlagSet("install", flag.ExitOnError)
+const installUsage = `usage: workwire install [--service] [--skills] [--all] [--dir <skills-dir>]
+
+  --skills    install the two-way agent skill (default ~/.claude/skills/workwire)
+  --service   run the hub as a background service (launchd / systemd --user / sc.exe)
+  --all       both of the above — the one-line setup
+
+The service is OPTIONAL (ADR-001): without it the hub still auto-starts on
+loopback or runs in the foreground with ` + "`workwire serve`" + `.
+`
+
+// installFlags is the parsed shape of `workwire install ...`, split out so the
+// flag semantics are unit-testable without touching the real system.
+type installFlags struct {
+	skills  bool
+	service bool
+	dir     string
+}
+
+func parseInstallFlags(args []string) (installFlags, error) {
+	fs_ := flag.NewFlagSet("install", flag.ContinueOnError)
+	fs_.SetOutput(os.Stderr)
 	skills := fs_.Bool("skills", false, "install the two-way agent skill")
+	svc := fs_.Bool("service", false, "install the hub as a background service")
+	all := fs_.Bool("all", false, "install both the service and the skill")
 	dir := fs_.String("dir", "", "skills directory override (default ~/.claude/skills)")
-	fs_.Parse(args)
-	if !*skills {
-		fmt.Fprint(os.Stderr, "usage: workwire install --skills [--dir <skills-dir>]\n\ninstalls the two-way agent skill into the harness skills directory (default ~/.claude/skills/workwire)\n")
-		return fmt.Errorf("install requires --skills")
+	if err := fs_.Parse(args); err != nil {
+		return installFlags{}, err
 	}
-	target := *dir
+	f := installFlags{skills: *skills || *all, service: *svc || *all, dir: *dir}
+	if !f.skills && !f.service {
+		return f, fmt.Errorf("install requires --skills, --service or --all")
+	}
+	return f, nil
+}
+
+// cmdInstall installs the agent skill and/or the background service.
+// Idempotent: re-install replaces skill files and re-registers the service —
+// credentials, cursors, session inbox files and the data dir are never touched.
+func cmdInstall(cfg config.Config, args []string) error {
+	f, err := parseInstallFlags(args)
+	if err != nil {
+		fmt.Fprint(os.Stderr, installUsage)
+		return err
+	}
+	if f.service {
+		if err := installService(cfg); err != nil {
+			return err
+		}
+	}
+	if f.skills {
+		if err := installSkills(cfg, f.dir); err != nil {
+			return err
+		}
+	}
+	if f.service && f.skills {
+		fmt.Printf("\nyou're done: the hub runs in the background and the skill is installed.\n")
+	}
+	return nil
+}
+
+func installSkills(cfg config.Config, dir string) error {
+	target := dir
 	if target == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
@@ -46,6 +97,75 @@ func cmdInstall(cfg config.Config, args []string) error {
 	}
 	fmt.Printf("skill ready: invoke it in a session, or start manually with `workwire listen --agent <name>`\n")
 	fmt.Printf("config: %s\n", filepath.Join(cfg.ConfigDir, "workwire.json"))
+	return nil
+}
+
+func installService(cfg config.Config) error {
+	spec, err := service.NewSpec(cfg.ConfigDir)
+	if err != nil {
+		return fmt.Errorf("resolve workwire binary: %w", err)
+	}
+	b := service.New()
+	if err := b.Install(spec); err != nil {
+		return fmt.Errorf("install service %s: %w", b.Name(), err)
+	}
+	fmt.Printf("service:  %s\n", b.Name())
+	fmt.Printf("binary:   %s %s\n", spec.BinPath, "serve")
+	fmt.Printf("logs:     %s\n          %s\n", spec.LogPath(), spec.ErrLogPath())
+	if h := b.Hint(); h != "" {
+		fmt.Printf("hint:     %s\n", h)
+	}
+	if !waitHealthy(cfg, 10) {
+		state, _ := b.Status(spec)
+		return fmt.Errorf("service installed (%s) but %s/health never answered — check %s",
+			state, cfg.HubURL, spec.ErrLogPath())
+	}
+	state, _ := b.Status(spec)
+	fmt.Printf("state:    %s\n", state)
+	fmt.Printf("hub:      %s (healthy)\n", cfg.HubURL)
+	fmt.Printf("verify:   workwire status\n")
+	return nil
+}
+
+// waitHealthy polls /health with a short backoff while the service boots.
+func waitHealthy(cfg config.Config, tries int) bool {
+	c := newClient(cfg)
+	delay := 100 * time.Millisecond
+	for i := 0; i < tries; i++ {
+		var out map[string]any
+		if code, err := c.do("GET", "/health", nil, &out); err == nil && code == 200 && out["service"] == "workwire" {
+			return true
+		}
+		time.Sleep(delay)
+		if delay < 2*time.Second {
+			delay *= 2
+		}
+	}
+	return false
+}
+
+// cmdUninstall removes the background service. The data dir is left alone.
+func cmdUninstall(cfg config.Config, args []string) error {
+	fs_ := flag.NewFlagSet("uninstall", flag.ContinueOnError)
+	fs_.SetOutput(os.Stderr)
+	svc := fs_.Bool("service", false, "remove the background service")
+	if err := fs_.Parse(args); err != nil {
+		return err
+	}
+	if !*svc {
+		fmt.Fprint(os.Stderr, "usage: workwire uninstall --service\n\nremoves the background service. Messages, cursors and credentials are kept.\n")
+		return fmt.Errorf("uninstall requires --service")
+	}
+	spec, err := service.NewSpec(cfg.ConfigDir)
+	if err != nil {
+		return err
+	}
+	b := service.New()
+	if err := b.Uninstall(spec); err != nil {
+		return fmt.Errorf("uninstall service %s: %w", b.Name(), err)
+	}
+	fmt.Printf("removed service %s\n", b.Name())
+	fmt.Printf("kept data dir %s (messages, cursors, credentials)\n", cfg.DataDir)
 	return nil
 }
 
