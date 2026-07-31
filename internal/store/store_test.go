@@ -106,7 +106,7 @@ func TestTombstoneSurvivesReplay(t *testing.T) {
 	s := mustOpen(t, dir, Options{})
 	e := env("a", "b", "t-1", "the secret text")
 	s.Append(e)
-	if found, _ := s.TombstoneMessage(e.ID); !found {
+	if found, _ := s.TombstoneMessage(e.ID, "muthu"); !found {
 		t.Fatal("tombstone should find the message")
 	}
 	if r := s.Render(e); r.Text != "" || r.ID != e.ID {
@@ -234,5 +234,177 @@ func TestThreadStateMembershipAndConvergence(t *testing.T) {
 	}
 	if all := s.Threads(24); len(all) != 1 || all[0].ThreadID != "t-1" {
 		t.Fatalf("Threads listing: %+v", all)
+	}
+}
+
+// kindEnv builds an envelope with an explicit kind and stamped peer role, the
+// way ingest does.
+func kindEnv(from, thread, kind, text, role string) *envelope.Envelope {
+	e := env(from, "", thread, text)
+	e.To = nil
+	e.Kind = kind
+	e.Meta = map[string]any{"peerRole": role}
+	return e
+}
+
+// F2: derived thread state is a read, so R13 excision applies to it too.
+func TestThreadStateHonoursTombstones(t *testing.T) {
+	cases := []struct {
+		name       string
+		deleteHead bool
+		deleteDiss bool
+		wantTopic  string
+		wantDiss   string
+	}{
+		{"nothing deleted", false, false, "TOPIC-SECRET", "DISSENT-SECRET"},
+		{"topic deleted", true, false, "", "DISSENT-SECRET"},
+		{"dissent deleted", false, true, "TOPIC-SECRET", ""},
+		{"both deleted", true, true, "", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := mustOpen(t, t.TempDir(), Options{})
+			head := kindEnv("muthu", "t-1", "", "TOPIC-SECRET", "human")
+			diss := kindEnv("priya", "t-1", "dissent", "DISSENT-SECRET", "human")
+			s.Append(head)
+			s.Append(diss)
+			if tc.deleteHead {
+				s.TombstoneMessage(head.ID, "muthu")
+			}
+			if tc.deleteDiss {
+				s.TombstoneMessage(diss.ID, "muthu")
+			}
+			ts, ok := s.ThreadState("t-1", 0)
+			if !ok {
+				t.Fatal("thread missing")
+			}
+			if ts.Topic != tc.wantTopic {
+				t.Fatalf("topic = %q, want %q", ts.Topic, tc.wantTopic)
+			}
+			if len(ts.Dissents) != 1 {
+				t.Fatalf("want exactly one open dissent, got %d", len(ts.Dissents))
+			}
+			if ts.Dissents[0].Text != tc.wantDiss {
+				t.Fatalf("dissent text = %q, want %q", ts.Dissents[0].Text, tc.wantDiss)
+			}
+			// The accountability record itself is never excised: who objected
+			// survives even when what they said does not (ADR-011).
+			if ts.Dissents[0].Peer != "priya" || ts.Dissents[0].Kind != "human" {
+				t.Fatalf("dissent attribution lost: %+v", ts.Dissents[0])
+			}
+		})
+	}
+}
+
+// F2: R22 lists every NON-deleted thread.
+func TestThreadsSkipsFullyDeletedThreads(t *testing.T) {
+	s := mustOpen(t, t.TempDir(), Options{})
+	keep := kindEnv("muthu", "t-keep", "", "kept", "human")
+	gone := kindEnv("muthu", "t-gone", "", "GONE-SECRET", "human")
+	s.Append(keep)
+	s.Append(gone)
+	if found, _ := s.TombstoneThread("t-gone", "muthu"); !found {
+		t.Fatal("thread tombstone should find the thread")
+	}
+	list := s.Threads(0)
+	if len(list) != 1 || list[0].ThreadID != "t-keep" {
+		t.Fatalf("want only t-keep listed, got %+v", list)
+	}
+}
+
+// F2: the excision itself is accountable.
+func TestTombstoneRecordsDeleter(t *testing.T) {
+	dir := t.TempDir()
+	s := mustOpen(t, dir, Options{})
+	e := env("a", "b", "t-1", "secret")
+	s.Append(e)
+	s.TombstoneMessage(e.ID, "muthu")
+	s.Close()
+	s2 := mustOpen(t, dir, Options{})
+	tomb, ok := s2.Tombstone(e.ID)
+	if !ok {
+		t.Fatal("tombstone record missing after replay")
+	}
+	if tomb.DeletedBy != "muthu" || tomb.DeletedAt == "" {
+		t.Fatalf("deletion record incomplete: %+v", tomb)
+	}
+}
+
+// F7: an age-based policy must actually collect. Before the fix nothing ever
+// rotated the active segment on age, so retention never had anything to drop.
+func TestAgedRetentionCollects(t *testing.T) {
+	dir := t.TempDir()
+	s := mustOpen(t, dir, Options{RetentionAge: time.Hour})
+	for i := 0; i < 20; i++ {
+		s.Append(env("a", "repoA", "t-1", fmt.Sprintf("m%d", i)))
+	}
+	// Well inside the window: nothing rotates, nothing is collected.
+	if err := s.Maintain(time.Now().Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if msgs, _, reset := s.Inbox("repoA", 0); reset || len(msgs) != 20 {
+		t.Fatalf("early maintain must not drop anything: %d msgs reset=%v", len(msgs), reset)
+	}
+	// Past the window: the aged active segment rotates, then expires.
+	if err := s.Maintain(time.Now().Add(2 * time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Maintain(time.Now().Add(4 * time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	msgs, _, reset := s.Inbox("repoA", 0)
+	if len(msgs) != 0 || !reset {
+		t.Fatalf("aged policy never collected: %d msgs still retained (reset=%v)", len(msgs), reset)
+	}
+}
+
+// F1: retention drops segments; it must not rewrite the audit record.
+func TestRetentionPreservesThreadState(t *testing.T) {
+	dir := t.TempDir()
+	// A tiny segment bound puts a segment boundary inside one thread's life.
+	s := mustOpen(t, dir, Options{SegmentMaxBytes: 400})
+	s.Append(kindEnv("muthu", "t-1", "", "the original topic", "human"))
+	s.Append(kindEnv("api", "t-1", "", "chatter", "agent"))
+	s.Append(kindEnv("web", "t-1", "dissent", "tokens rotate", "agent"))
+	s.Append(kindEnv("muthu", "t-1", "resolved", "shipping anyway", "human"))
+	before, ok := s.ThreadState("t-1", 0)
+	if !ok {
+		t.Fatal("thread missing")
+	}
+	// Unrelated traffic, then age everything out except the active segment.
+	for i := 0; i < 20; i++ {
+		s.Append(env("api", "repoA", "t-noise", fmt.Sprintf("n%d", i)))
+	}
+	if err := s.EnforceRetention(time.Now().Add(365 * 24 * time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	after, ok := s.ThreadState("t-1", 0)
+	if !ok {
+		t.Fatal("thread state lost to retention")
+	}
+	checks := []struct {
+		field     string
+		got, want any
+	}{
+		{"initiator", after.Initiator, before.Initiator},
+		{"topic", after.Topic, before.Topic},
+		{"state", after.State, before.State},
+		{"resolved", after.Resolved, before.Resolved},
+		{"closed_by", after.ClosedBy, before.ClosedBy},
+		{"closed_by_kind", after.ClosedByKind, before.ClosedByKind},
+		{"closed_over", len(after.ClosedOver), len(before.ClosedOver)},
+		{"open dissents", len(after.Dissents), len(before.Dissents)},
+	}
+	for _, c := range checks {
+		if c.got != c.want {
+			t.Errorf("%s rewritten by retention: got %v, want %v", c.field, c.got, c.want)
+		}
+	}
+	if before.Initiator != "muthu" || before.ClosedBy != "muthu" || len(before.ClosedOver) != 1 {
+		t.Fatalf("precondition wrong, the test is not asserting what it thinks: %+v", before)
+	}
+	// ...and the loss that DID happen is declared rather than hidden.
+	if !after.Truncated {
+		t.Error("a thread whose head was dropped must report truncated:true")
 	}
 }

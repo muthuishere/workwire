@@ -38,13 +38,18 @@ func (o *Options) defaults() {
 	}
 }
 
-// record is one NDJSON line in a segment or the tombstone file.
+// record is one NDJSON line in a segment, the tombstone file or the thread
+// checkpoint file.
 type record struct {
-	Type string             `json:"type"` // "msg" | "tomb"
+	Type string             `json:"type"` // "msg" | "tomb" | "chk"
 	Seq  int64              `json:"seq,omitempty"`
 	Seqs map[string]int64   `json:"seqs,omitempty"` // per-recipient cursors (ADR-009)
 	Env  *envelope.Envelope `json:"env,omitempty"`
 	ID   string             `json:"id,omitempty"`
+	// DeletedBy / DeletedAt record who excised the envelope and when, so the
+	// deletion itself is accountable (ADR-008). Tombstone records only.
+	DeletedBy string `json:"deletedBy,omitempty"`
+	DeletedAt string `json:"deletedAt,omitempty"`
 }
 
 // Stored is an envelope with its hub-assigned sequence numbers: Seq is the
@@ -83,15 +88,32 @@ type Store struct {
 	byID     map[string]*Stored
 	threads  map[string][]*Stored
 	tombs    map[string]bool
+	tombInfo map[string]Tombstone
 	lastSeq  int64
 	minSeq   int64 // smallest retained seq; lastSeq+1 when nothing retained
 	seg      *os.File
 	segPath  string
 	segSize  int64
 	segIdx   int
+	segStart time.Time // when the active segment received its first record
 	tombFile *os.File
 	lock     *dirLock
 	notify   chan struct{}
+
+	// chk is the retention-immune thread checkpoint (ADR-008 sidecar pattern,
+	// same shape as tombstones.ndjson): the state-changing envelopes of every
+	// thread, kept outside the segment set so derived thread state — initiator,
+	// topic, dissents, closure — survives a segment being dropped.
+	chkFile *os.File
+	chk     map[string][]*Stored
+	chkIDs  map[string]bool
+}
+
+// Tombstone is the accountability record of one excision.
+type Tombstone struct {
+	ID        string `json:"id"`
+	DeletedBy string `json:"deletedBy,omitempty"`
+	DeletedAt string `json:"deletedAt,omitempty"`
 }
 
 // Open acquires the data-dir lock, replays segments and tombstones, and
@@ -106,13 +128,16 @@ func Open(dir string, opts Options) (*Store, error) {
 		return nil, fmt.Errorf("data dir %s is locked by another workwire hub: %w", dir, err)
 	}
 	s := &Store{
-		dir:     dir,
-		opts:    opts,
-		byID:    map[string]*Stored{},
-		threads: map[string][]*Stored{},
-		tombs:   map[string]bool{},
-		lock:    lock,
-		notify:  make(chan struct{}),
+		dir:      dir,
+		opts:     opts,
+		byID:     map[string]*Stored{},
+		threads:  map[string][]*Stored{},
+		tombs:    map[string]bool{},
+		tombInfo: map[string]Tombstone{},
+		chk:      map[string][]*Stored{},
+		chkIDs:   map[string]bool{},
+		lock:     lock,
+		notify:   make(chan struct{}),
 	}
 	if err := s.load(); err != nil {
 		lock.release()
@@ -124,6 +149,12 @@ func Open(dir string, opts Options) (*Store, error) {
 		return nil, err
 	}
 	s.tombFile = tf
+	cf, err := os.OpenFile(filepath.Join(dir, "threads.ndjson"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		lock.release()
+		return nil, err
+	}
+	s.chkFile = cf
 	if err := s.openSegment(); err != nil {
 		lock.release()
 		return nil, err
@@ -140,6 +171,9 @@ func (s *Store) Close() {
 	}
 	if s.tombFile != nil {
 		s.tombFile.Close()
+	}
+	if s.chkFile != nil {
+		s.chkFile.Close()
 	}
 	s.writeState()
 	if s.lock != nil {
@@ -173,17 +207,27 @@ func (s *Store) load() error {
 			s.segIdx = idx
 		}
 	}
-	// tombstones replay last: they must survive rotation and restart.
-	if f, err := os.Open(filepath.Join(s.dir, "tombstones.ndjson")); err == nil {
-		sc := bufio.NewScanner(f)
-		sc.Buffer(make([]byte, 0, 64*1024), 16<<20)
-		for sc.Scan() {
-			var r record
-			if json.Unmarshal(sc.Bytes(), &r) == nil && r.Type == "tomb" && r.ID != "" {
-				s.tombs[r.ID] = true
-			}
+	// the thread checkpoint replays before tombstones: it is a sidecar outside
+	// the segment set, so it carries state-changing envelopes whose segment may
+	// already have been dropped by retention.
+	s.scanSidecar("threads.ndjson", func(r record) {
+		if r.Type != "chk" || r.Env == nil || s.chkIDs[r.Env.ID] {
+			return
 		}
-		f.Close()
+		st := &Stored{Seq: r.Seq, Seqs: r.Seqs, Env: r.Env}
+		s.chkIDs[r.Env.ID] = true
+		s.chk[r.Env.ThreadID] = append(s.chk[r.Env.ThreadID], st)
+	})
+	// tombstones replay last: they must survive rotation and restart.
+	s.scanSidecar("tombstones.ndjson", func(r record) {
+		if r.Type != "tomb" || r.ID == "" {
+			return
+		}
+		s.tombs[r.ID] = true
+		s.tombInfo[r.ID] = Tombstone{ID: r.ID, DeletedBy: r.DeletedBy, DeletedAt: r.DeletedAt}
+	})
+	for _, list := range s.chk {
+		sort.Slice(list, func(i, j int) bool { return list[i].Seq < list[j].Seq })
 	}
 	sort.Slice(s.msgs, func(i, j int) bool { return s.msgs[i].Seq < s.msgs[j].Seq })
 	for _, list := range s.threads {
@@ -191,6 +235,24 @@ func (s *Store) load() error {
 	}
 	s.recomputeBounds()
 	return nil
+}
+
+// scanSidecar replays one NDJSON sidecar file (tombstones or the thread
+// checkpoint), ignoring a missing file and torn tail lines.
+func (s *Store) scanSidecar(name string, fn func(record)) {
+	f, err := os.Open(filepath.Join(s.dir, name))
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	sc := bufio.NewScanner(f)
+	sc.Buffer(make([]byte, 0, 64*1024), 16<<20)
+	for sc.Scan() {
+		var r record
+		if json.Unmarshal(sc.Bytes(), &r) == nil {
+			fn(r)
+		}
+	}
 }
 
 func (s *Store) segmentNames() ([]string, error) {
@@ -264,6 +326,13 @@ func (s *Store) openSegment() error {
 	}
 	s.seg = f
 	s.segSize = fi.Size()
+	// An empty segment has no age yet; a resumed one is as old as its last
+	// write, which is the best available lower bound on its first write.
+	if fi.Size() > 0 {
+		s.segStart = fi.ModTime()
+	} else {
+		s.segStart = time.Time{}
+	}
 	return nil
 }
 
@@ -305,13 +374,23 @@ func (s *Store) Append(env *envelope.Envelope) (int64, error) {
 		s.lastSeq = prevSeq
 		return 0, err
 	}
+	if s.segSize == 0 {
+		s.segStart = time.Now()
+	}
 	s.segSize += int64(len(b))
+	st := &Stored{Seq: seq, Seqs: seqs, Env: env}
+	// Checkpoint BEFORE rotating: whether this envelope changes derived thread
+	// state depends on the thread being empty, which the append below changes.
+	if s.isCheckpointableLocked(env) {
+		if err := s.appendCheckpointLocked(st); err != nil {
+			return 0, err
+		}
+	}
 	if s.segSize >= s.opts.SegmentMaxBytes {
 		if err := s.rotateLocked(); err != nil {
 			return 0, err
 		}
 	}
-	st := &Stored{Seq: seq, Seqs: seqs, Env: env}
 	s.msgs = append(s.msgs, st)
 	s.byID[env.ID] = st
 	s.threads[env.ThreadID] = append(s.threads[env.ThreadID], st)
@@ -321,6 +400,66 @@ func (s *Store) Append(env *envelope.Envelope) (int64, error) {
 	s.writeState()
 	s.wakeLocked()
 	return seq, nil
+}
+
+// isCheckpointableLocked reports whether an envelope carries derived thread
+// state that must outlive retention: the thread's head (initiator + topic) and
+// every kind that moves dissent or closure (ADR-011).
+func (s *Store) isCheckpointableLocked(env *envelope.Envelope) bool {
+	switch env.Kind {
+	case "dissent", "withdraw", "resolved", "reopen":
+		return true
+	}
+	return len(s.threads[env.ThreadID]) == 0 && len(s.chk[env.ThreadID]) == 0
+}
+
+func (s *Store) appendCheckpointLocked(st *Stored) error {
+	if s.chkIDs[st.Env.ID] {
+		return nil
+	}
+	b, err := json.Marshal(record{Type: "chk", Seq: st.Seq, Seqs: st.Seqs, Env: st.Env})
+	if err != nil {
+		return err
+	}
+	if _, err := s.chkFile.Write(append(b, '\n')); err != nil {
+		return err
+	}
+	s.chkIDs[st.Env.ID] = true
+	s.chk[st.Env.ThreadID] = append(s.chk[st.Env.ThreadID], st)
+	return nil
+}
+
+// threadEnvelopesLocked merges the retention-immune checkpoint with the
+// retained segments for one thread, deduped by envelope id and ordered by
+// sequence. truncated reports that at least one checkpointed envelope is no
+// longer in retained history, and earliestRetained is the timestamp of the
+// oldest envelope that still is.
+func (s *Store) threadEnvelopesLocked(id string) (list []*Stored, truncated bool, earliestRetained string) {
+	retained := s.threads[id]
+	chk := s.chk[id]
+	if len(retained) == 0 && len(chk) == 0 {
+		return nil, false, ""
+	}
+	if len(retained) > 0 {
+		earliestRetained = retained[0].Env.TS
+	}
+	seen := make(map[string]bool, len(retained)+len(chk))
+	for _, st := range retained {
+		seen[st.Env.ID] = true
+	}
+	list = append(list, retained...)
+	for _, st := range chk {
+		if seen[st.Env.ID] {
+			continue
+		}
+		truncated = true
+		list = append(list, st)
+	}
+	if truncated {
+		list = append([]*Stored(nil), list...)
+		sort.Slice(list, func(i, j int) bool { return list[i].Seq < list[j].Seq })
+	}
+	return list, truncated, earliestRetained
 }
 
 func (s *Store) wakeLocked() {
@@ -401,6 +540,13 @@ type ThreadState struct {
 	// Reopened is true when a human reopened the thread after a close or a
 	// stall (ADR-011 §3a).
 	Reopened bool `json:"reopened,omitempty"`
+	// Truncated is true when retention has dropped part of this thread's
+	// history, so `count` and the rendered messages are incomplete. Initiator,
+	// dissents and closure are still exact — they come from the retention-immune
+	// thread checkpoint (ADR-008). EarliestRetained is the timestamp of the
+	// oldest envelope still readable via `GET /threads/<id>`.
+	Truncated        bool   `json:"truncated,omitempty"`
+	EarliestRetained string `json:"earliest_retained,omitempty"`
 }
 
 // HasMember reports whether name is a member of the thread.
@@ -466,11 +612,21 @@ func originOf(e *envelope.Envelope) *origin.Info {
 // envelopes themselves — nothing extra to keep in sync, and it survives
 // restart because the segments do.
 func (s *Store) threadStateLocked(id string, cap int) (ThreadState, bool) {
-	list, ok := s.threads[id]
-	if !ok {
+	list, truncated, earliest := s.threadEnvelopesLocked(id)
+	if list == nil {
 		return ThreadState{}, false
 	}
-	ts := ThreadState{ThreadID: id, State: "open"}
+	// R13: excision applies to ALL reads, and derived thread state is a read.
+	text := func(e *envelope.Envelope) string {
+		if s.tombs[e.ID] {
+			return ""
+		}
+		return e.Text
+	}
+	ts := ThreadState{ThreadID: id, State: "open", Truncated: truncated}
+	if truncated {
+		ts.EarliestRetained = earliest
+	}
 	seen := map[string]bool{}
 	add := func(n string) {
 		if n == "" || seen[n] {
@@ -493,7 +649,7 @@ func (s *Store) threadStateLocked(id string, cap int) (ThreadState, bool) {
 	capBase := 0
 	if len(list) > 0 {
 		ts.Initiator = list[0].Env.From
-		ts.Topic = list[0].Env.Text
+		ts.Topic = text(list[0].Env)
 	}
 	for idx, st := range list {
 		e := st.Env
@@ -510,7 +666,7 @@ func (s *Store) threadStateLocked(id string, cap int) (ThreadState, bool) {
 					order = append(order, e.From)
 				}
 				open[e.From] = Dissent{
-					Peer: e.From, Kind: roleOf(e), Text: e.Text, TS: e.TS, Origin: originOf(e),
+					Peer: e.From, Kind: roleOf(e), Text: text(e), TS: e.TS, Origin: originOf(e),
 				}
 			}
 		case "withdraw":
@@ -561,12 +717,24 @@ func (s *Store) ThreadState(id string, cap int) (ThreadState, bool) {
 	return s.threadStateLocked(id, cap)
 }
 
-// Threads lists every retained thread, newest activity first.
+// Threads lists every retained, non-deleted thread, newest activity first
+// (hub-core R22): a thread whose every envelope has been tombstoned is gone
+// from discovery, not served as an empty husk.
 func (s *Store) Threads(cap int) []ThreadState {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	out := make([]ThreadState, 0, len(s.threads))
+	ids := make(map[string]bool, len(s.threads))
 	for id := range s.threads {
+		ids[id] = true
+	}
+	for id := range s.chk {
+		ids[id] = true
+	}
+	out := make([]ThreadState, 0, len(ids))
+	for id := range ids {
+		if s.threadDeletedLocked(id) {
+			continue
+		}
 		if ts, ok := s.threadStateLocked(id, cap); ok {
 			out = append(out, ts)
 		}
@@ -624,44 +792,70 @@ func (s *Store) IsTombstoned(id string) bool {
 	return s.tombs[id]
 }
 
-func (s *Store) appendTombLocked(id string) error {
-	b, _ := json.Marshal(record{Type: "tomb", ID: id})
+// Tombstone returns the excision record for an id, when there is one.
+func (s *Store) Tombstone(id string) (Tombstone, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t, ok := s.tombInfo[id]
+	return t, ok
+}
+
+// threadDeletedLocked reports whether every envelope of a thread is excised.
+func (s *Store) threadDeletedLocked(id string) bool {
+	list, _, _ := s.threadEnvelopesLocked(id)
+	if len(list) == 0 {
+		return false
+	}
+	for _, st := range list {
+		if !s.tombs[st.Env.ID] {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *Store) appendTombLocked(id, by string) error {
+	t := Tombstone{ID: id, DeletedBy: by, DeletedAt: time.Now().UTC().Format(time.RFC3339Nano)}
+	b, _ := json.Marshal(record{Type: "tomb", ID: id, DeletedBy: t.DeletedBy, DeletedAt: t.DeletedAt})
 	if _, err := s.tombFile.Write(append(b, '\n')); err != nil {
 		return err
 	}
 	s.tombs[id] = true
+	s.tombInfo[id] = t
 	return nil
 }
 
-// TombstoneMessage excises one envelope's content. Returns false when the id
-// is unknown; repeating is idempotent.
-func (s *Store) TombstoneMessage(id string) (bool, error) {
+// TombstoneMessage excises one envelope's content, recording who deleted it.
+// Returns false when the id is unknown; repeating is idempotent.
+func (s *Store) TombstoneMessage(id, by string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if _, ok := s.byID[id]; !ok && !s.tombs[id] {
+	_, known := s.byID[id]
+	if !known && !s.tombs[id] && !s.chkIDs[id] {
 		return false, nil
 	}
 	if s.tombs[id] {
 		return true, nil
 	}
-	if err := s.appendTombLocked(id); err != nil {
+	if err := s.appendTombLocked(id, by); err != nil {
 		return true, err
 	}
 	s.wakeLocked()
 	return true, nil
 }
 
-// TombstoneThread excises every envelope on a thread.
-func (s *Store) TombstoneThread(threadID string) (bool, error) {
+// TombstoneThread excises every envelope on a thread, checkpointed ones
+// included — a dropped segment must not leave a dissent readable.
+func (s *Store) TombstoneThread(threadID, by string) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	list, ok := s.threads[threadID]
-	if !ok {
+	list, _, _ := s.threadEnvelopesLocked(threadID)
+	if len(list) == 0 {
 		return false, nil
 	}
 	for _, st := range list {
 		if !s.tombs[st.Env.ID] {
-			if err := s.appendTombLocked(st.Env.ID); err != nil {
+			if err := s.appendTombLocked(st.Env.ID, by); err != nil {
 				return true, err
 			}
 		}
@@ -747,10 +941,40 @@ func (s *Store) EnforceRetention(now time.Time) error {
 	return nil
 }
 
-// RotateNow force-rotates the active segment (used by retention tests and
-// the periodic retention loop so old segments become droppable).
+// RotateNow force-rotates the active segment so its records become droppable
+// (EnforceRetention never drops the active segment). Called by Maintain and
+// by tests.
 func (s *Store) RotateNow() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.rotateLocked()
+}
+
+// rotateInterval is how long the active segment may keep accepting records
+// before Maintain closes it. A quarter of the retention window bounds how far
+// past the window a record can outlive it, at four segments per window.
+func (s *Store) rotateInterval() time.Duration {
+	d := s.opts.RetentionAge / 4
+	if d <= 0 {
+		d = time.Hour
+	}
+	return d
+}
+
+// Maintain is the periodic retention pass. It rotates the active segment once
+// it is old enough, THEN drops what has expired: without the rotation an
+// age-based policy could never fire, because rotation otherwise happens only
+// on size and EnforceRetention never drops the active segment (hub-core R4).
+func (s *Store) Maintain(now time.Time) error {
+	s.mu.Lock()
+	aged := s.segSize > 0 && !s.segStart.IsZero() && now.Sub(s.segStart) >= s.rotateInterval()
+	var err error
+	if aged {
+		err = s.rotateLocked()
+	}
+	s.mu.Unlock()
+	if err != nil {
+		return err
+	}
+	return s.EnforceRetention(now)
 }
