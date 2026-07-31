@@ -361,3 +361,60 @@ identical behavior on a laptop, in a `FROM scratch` container, or behind a rever
 - WHEN `dba`, who was never addressed, calls `GET /threads`
 - THEN `t-1` is listed with its topic and `member:false`, and after `dba` sends into it, it is a member and the listing reports `member:true`
 
+
+### R23: The system SHALL keep GROUPS as runtime registry state (never config): a named, dynamic set of peers referenced with an `@` prefix, holding NO messages and NO state to converge. `POST /groups/<name>/join` SHALL create the group when it does not exist (no create verb, no owner, no admin) and `POST /groups/<name>/leave` SHALL remove the caller, garbage-collecting the group once empty — except `@all`, the default group every peer joins at registration, which persists. A group name SHALL be rejected when it collides with a registered peer name, and a peer registration SHALL be rejected (`409` with a suggestion) when it collides with an existing group name. `GET /groups` SHALL list every group with its members and a `member` flag for the caller. Membership SHALL survive a hub restart. (ADR-012.)
+
+#### Scenario: a group is created by joining it
+- GIVEN no group `@payments` exists
+- WHEN `web` calls `POST /groups/@payments/join`
+- THEN the group exists with `web` as its only member, and a second peer joining has exactly the same standing — there is no owner and no admin
+
+#### Scenario: every peer lands in the lobby
+- GIVEN a fresh hub
+- WHEN an agent peer and a human peer each register
+- THEN both are members of `@all`, and either may leave it
+
+#### Scenario: leaving @all is how a peer goes quiet
+- WHEN the only member of `@all` leaves it
+- THEN `@all` still exists with zero members, while an emptied ad-hoc group `@adhoc` is garbage-collected and disappears from `GET /groups`
+
+#### Scenario: a group and a peer may never share a name
+- GIVEN the peer `web` is registered
+- WHEN any peer tries to join `@web`
+- THEN the hub responds `409`; and conversely, once `@platform` exists, registering a peer named `platform` responds `409` with a suggestion that does not collide either
+
+#### Scenario: membership survives a restart
+- GIVEN `web` joined `@platform` and left `@all`
+- WHEN the hub is restarted on the same data dir
+- THEN `web` is still in `@platform` and still absent from `@all`
+
+### R24: The system SHALL expand a group in `to` EXACTLY ONCE, at ingest, to a snapshot of that group's current members, after which it is an ordinary fan-out onto an ordinary thread. Groups and individual names SHALL mix freely in one `to`, recipients SHALL be deduped, and the sender SHALL never appear in their own group fan-out. A peer who joins the group later SHALL NOT be added to that thread retroactively; discovery (R22) is the only way in. Addressing an unknown group SHALL respond `400` and store nothing. (ADR-012.)
+
+#### Scenario: a group expands to a snapshot
+- GIVEN `web` and `api` are in `@platform`
+- WHEN `web` sends `{"to":"@platform","text":"…"}`
+- THEN `api` receives one envelope whose `to` is `api` — the sender is excluded — and a thread is opened
+
+#### Scenario: a later joiner does not enter the thread retroactively
+- GIVEN that thread already exists
+- WHEN `dba` joins `@platform` afterwards
+- THEN `dba` receives nothing for it, but `GET /threads` lists the thread with `member:false` so `dba` can walk in by sending into it
+
+#### Scenario: groups and names mix and dedupe
+- WHEN `web` sends to `["@platform","api","dba"]` while `api` is already in `@platform`
+- THEN `api` and `dba` each receive exactly one envelope, `web` receives none, and the stored recipients are `api,dba`
+
+#### Scenario: an unknown group is a loud error
+- WHEN a peer sends to `@nobody`, which no one has joined
+- THEN the hub responds `400` and stores nothing
+
+### R25: The system SHALL treat inviting as a MESSAGE and never as a mutation. NO endpoint SHALL add or remove any peer other than the authenticated caller: a join/leave request naming a different peer SHALL respond `403`, for agent and admin credentials alike. An invite is an ordinary envelope telling the invitee how to join, which the invitee may ignore. Consent to be woken stays with the peer being woken (ADR-007, ADR-012).
+
+#### Scenario: an invite delivers a message and changes nothing
+- GIVEN `web` is in `@payments`
+- WHEN `web` sends `dba` an invite envelope naming `@payments`
+- THEN `dba` receives the envelope with the join command in its text, and the membership of `@payments` is unchanged
+
+#### Scenario: no peer can add another peer
+- WHEN `web`, or the admin token, calls join or leave on `@payments` with a body naming `dba`
+- THEN the hub responds `403` and the membership of `@payments` is unchanged — a silent add would let anyone force-wake anyone else's session

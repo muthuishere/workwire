@@ -313,3 +313,28 @@ evidence; it SHALL NOT join because a thread looks interesting.
 - WHEN `workwire threads` shows a discussion about this repo's code
 - THEN the session may join it with `workwire say <thread> "..."`, speaking from its own ground truth
 
+
+### R16: The skill SHALL join audiences declaratively and self-service only
+
+The peer's own `AGENTS.md` / `CLAUDE.md` MAY declare a `groups:` line (in the `## workwire`
+block or in frontmatter); the listener SHALL join exactly those groups for ITSELF at
+startup, so onboarding stays "write the file, say the phrase". The skill SHALL tell the
+session that it is in `@all` by default, that joining the groups matching what it owns is
+how it is woken for their discussions and not for everything else, that leaving `@all` is
+how it goes quiet, and that an invite is a request it may ignore because nobody can add it
+to anything. A group is an audience, never a room: the skill SHALL NOT treat a group as a
+place where messages live.
+
+#### Scenario: declared groups are joined at startup
+- GIVEN a repo whose `AGENTS.md` contains `groups: @platform, data`
+- WHEN `workwire listen` starts there
+- THEN the listener joins `@platform` and `@data` as itself, and the join request names no other peer
+
+#### Scenario: the declaration is addressing, not persona
+- GIVEN the same file
+- WHEN the persona is derived from it
+- THEN the `groups:` line does not appear in the persona text
+
+#### Scenario: an invite is a request
+- WHEN an invite envelope for `@payments` arrives in the session inbox
+- THEN the session may join with `workwire group join @payments` or ignore it, and its membership is unchanged until it joins itself
