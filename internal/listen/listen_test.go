@@ -3,6 +3,7 @@ package listen
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -300,4 +301,43 @@ func readLines(t *testing.T, path string) []string {
 		}
 	}
 	return out
+}
+
+// The listener joins the audiences declared in the peer's own file
+// (ADR-012) — and never joins anybody else to anything.
+func TestJoinDeclaredGroups(t *testing.T) {
+	var joined []string
+	var bodies []string
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasSuffix(r.URL.Path, "/join") {
+			b, _ := io.ReadAll(r.Body)
+			bodies = append(bodies, string(b))
+			joined = append(joined, strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/groups/"), "/join"))
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{}`))
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer ts.Close()
+	r, err := New(Options{
+		Agent:     "web",
+		HubURL:    ts.URL,
+		ConfigDir: t.TempDir(),
+		// bare names are normalised; @all comes from the hub, not here
+		Groups: []string{"@platform", "data"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.JoinDeclaredGroups()
+	if got := strings.Join(joined, ","); got != "@platform,@data" {
+		t.Fatalf("joined %q", got)
+	}
+	for _, b := range bodies {
+		if strings.Contains(b, "peer") {
+			t.Fatalf("join body must not name a peer: %s", b)
+		}
+	}
 }

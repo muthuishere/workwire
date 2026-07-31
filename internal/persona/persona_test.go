@@ -30,6 +30,47 @@ func TestFromMarkdown(t *testing.T) {
 	}
 }
 
+// A peer declares the audiences it wants in its own AGENTS.md / CLAUDE.md
+// (ADR-012), so onboarding stays "write the file, say the phrase".
+func TestGroupsFromMarkdown(t *testing.T) {
+	cases := []struct {
+		name, doc string
+		want      []string
+	}{
+		{
+			name: "workwire section, comma separated, @ optional",
+			doc:  "# repo\n\n## workwire\n- owns the Go hub\n- groups: @platform, data\n",
+			want: []string{"@platform", "@data"},
+		},
+		{
+			name: "frontmatter declaration",
+			doc:  "---\nname: api\ngroups: \"@platform @payments\"\n---\n\nprose\n",
+			want: []string{"@platform", "@payments"},
+		},
+		{name: "no declaration", doc: "# repo\n\n## workwire\n- owns the hub\n", want: nil},
+		{name: "empty doc", doc: "", want: nil},
+	}
+	for _, c := range cases {
+		got := GroupsFromMarkdown(c.doc)
+		if len(got) != len(c.want) {
+			t.Fatalf("%s: got %v, want %v", c.name, got, c.want)
+		}
+		for i := range got {
+			if got[i] != c.want[i] {
+				t.Fatalf("%s: got %v, want %v", c.name, got, c.want)
+			}
+		}
+	}
+}
+
+// The `groups:` line is addressing config, never part of the persona.
+func TestGroupsLineIsNotPersona(t *testing.T) {
+	doc := "# repo\n\n## workwire\n- groups: @platform\n- owns the Go hub\n"
+	if got := FromMarkdown(doc); got != "owns the Go hub" {
+		t.Fatalf("groups leaked into the persona: %q", got)
+	}
+}
+
 func TestNeverSendsTheWholeFile(t *testing.T) {
 	long := "# repo\n\n" + repeat("this is a long instruction-heavy operating manual. ", 40)
 	got := FromMarkdown(long)

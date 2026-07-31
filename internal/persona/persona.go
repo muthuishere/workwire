@@ -45,6 +45,93 @@ func Derive(dir string) string {
 	return ""
 }
 
+// DeriveGroups returns the workwire groups declared by dir's own files
+// (ADR-012): a `groups:` line inside the `## workwire` block, or a `groups`
+// key in YAML frontmatter. Onboarding stays "write the file, say the
+// phrase" — the listener joins these at startup.
+func DeriveGroups(dir string) []string {
+	if dir == "" {
+		dir, _ = os.Getwd()
+	}
+	for _, p := range sources(dir) {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		if g := GroupsFromMarkdown(string(b)); len(g) > 0 {
+			return g
+		}
+	}
+	return nil
+}
+
+// GroupsFromMarkdown parses a `groups:` declaration out of one document.
+// Names are normalised to the `@name` form; a group is only ever a name, so
+// nothing else is read out of the file.
+func GroupsFromMarkdown(doc string) []string {
+	raw := groupsLine(doc)
+	if raw == "" {
+		return nil
+	}
+	var out []string
+	seen := map[string]bool{}
+	for _, f := range strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\t'
+	}) {
+		n := strings.TrimSpace(strings.Trim(f, `"'`))
+		n = strings.TrimLeft(n, "@")
+		if n == "" || seen[n] {
+			continue
+		}
+		seen[n] = true
+		out = append(out, "@"+n)
+	}
+	return out
+}
+
+// groupsLine finds the raw right-hand side of a `groups:` declaration, in
+// the `## workwire` block first, then frontmatter.
+func groupsLine(doc string) string {
+	in := false
+	for _, ln := range strings.Split(doc, "\n") {
+		t := strings.TrimSpace(ln)
+		if strings.HasPrefix(t, "#") {
+			if in {
+				break
+			}
+			h := strings.ToLower(strings.TrimSpace(strings.TrimLeft(t, "# ")))
+			in = strings.HasPrefix(t, "##") && h == "workwire"
+			continue
+		}
+		if in {
+			if v, ok := groupsKV(t); ok {
+				return v
+			}
+		}
+	}
+	if strings.HasPrefix(strings.TrimLeft(doc, "\n"), "---") {
+		body := strings.TrimLeft(doc, "\n")[3:]
+		if end := strings.Index(body, "\n---"); end >= 0 {
+			for _, ln := range strings.Split(body[:end], "\n") {
+				if v, ok := groupsKV(strings.TrimSpace(ln)); ok {
+					return v
+				}
+			}
+		}
+	}
+	return ""
+}
+
+// groupsKV matches a `groups: ...` line, with or without a list bullet.
+func groupsKV(line string) (string, bool) {
+	t := strings.TrimLeft(line, "-* ")
+	i := strings.Index(t, ":")
+	if i <= 0 || strings.ToLower(strings.TrimSpace(t[:i])) != "groups" {
+		return "", false
+	}
+	return strings.TrimSpace(t[i+1:]), true
+}
+
 // FromMarkdown extracts a persona from one markdown document: an explicit
 // `## workwire` declaration wins, then YAML frontmatter keys, then the
 // opening prose.
@@ -77,6 +164,11 @@ func fromSection(doc string) string {
 			continue
 		}
 		if in && t != "" {
+			// `groups:` is addressing config (ADR-012), not a
+			// self-description — it never becomes part of the persona.
+			if _, ok := groupsKV(t); ok {
+				continue
+			}
 			buf = append(buf, strings.TrimLeft(t, "-* "))
 		}
 	}

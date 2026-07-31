@@ -35,6 +35,10 @@ type Options struct {
 	Persona string
 	// Kind is "agent" (default) or "human" (ADR-011 §3).
 	Kind string
+	// Groups are the audiences this peer declared in its own AGENTS.md /
+	// CLAUDE.md (ADR-012). The listener joins them at startup — joining is
+	// always self-service, so this only ever adds THIS peer.
+	Groups []string
 	// OriginDir is the working tree provenance is derived from (default cwd).
 	OriginDir string
 	Heartbeat time.Duration
@@ -282,6 +286,24 @@ func (r *Runner) Heartbeat() error {
 	return nil
 }
 
+// JoinDeclaredGroups joins every group the peer declared (ADR-012). Failure
+// is not fatal: a peer that cannot join an audience still listens, it is
+// just addressable only by name. @all is joined by the hub at registration.
+func (r *Runner) JoinDeclaredGroups() {
+	for _, g := range r.opts.Groups {
+		name := registry.NormalizeGroup(g)
+		if name == "" {
+			continue
+		}
+		code, err := r.do("POST", "/groups/"+url.PathEscape(name)+"/join", r.secret, map[string]string{}, nil)
+		if err != nil || code != 200 {
+			r.opts.Logf("could not join %s (%d): %v", name, code, err)
+			continue
+		}
+		r.opts.Logf("joined %s", name)
+	}
+}
+
 // AcquireLease takes (or renews) the hub-side listen lease — the
 // cross-machine singleton authority (agent-skill R4). A 409 means another
 // live listener holds it.
@@ -424,6 +446,7 @@ func (r *Runner) Run(stop <-chan struct{}) error {
 		return err
 	}
 	defer r.ReleaseLease()
+	r.JoinDeclaredGroups()
 	r.opts.Logf("listening as %s (inbox file %s)", r.agentName, r.InboxPath())
 	renew := time.NewTicker(r.opts.Heartbeat)
 	defer renew.Stop()
