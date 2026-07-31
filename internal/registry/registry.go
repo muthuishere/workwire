@@ -126,6 +126,9 @@ type Registry struct {
 	ttl    time.Duration
 	agents map[string]*Agent // by name
 	leases map[string]*Lease // by agent name
+	// groups is the audience map (ADR-012): group name -> member set. It
+	// holds membership only; a group never holds a message.
+	groups map[string]map[string]bool
 	now    func() time.Time
 }
 
@@ -147,6 +150,7 @@ func Open(dataDir string, ttl time.Duration) (*Registry, error) {
 			r.agents[a.Name] = a
 		}
 	}
+	r.loadGroupsLocked()
 	return r, nil
 }
 
@@ -201,6 +205,11 @@ type RegisterResult struct {
 func (r *Registry) Register(card Card, presentedSecret string) RegisterResult {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	// A peer name may never collide with a group name (ADR-012): `@platform`
+	// the audience and `platform` the peer cannot both exist.
+	if r.nameCollidesLocked(card.Name) {
+		return RegisterResult{Conflict: true, Suggestion: r.suggestLocked(card.Name)}
+	}
 	existing, ok := r.agents[card.Name]
 	if ok {
 		if !secretMatches(existing, presentedSecret) {
@@ -236,6 +245,13 @@ func (r *Registry) Register(card Card, presentedSecret string) RegisterResult {
 		LastSeen:     r.now(),
 	}
 	r.agents[card.Name] = a
+	// Every peer joins the lobby at registration (ADR-012). Only on CREATE:
+	// re-registration must never undo a deliberate `group leave @all`.
+	if r.groups[DefaultGroup] == nil {
+		r.groups[DefaultGroup] = map[string]bool{}
+	}
+	r.groups[DefaultGroup][a.Name] = true
+	r.persistGroupsLocked()
 	r.persistLocked()
 	return RegisterResult{Created: true, Agent: a, Secret: secret}
 }
@@ -243,7 +259,8 @@ func (r *Registry) Register(card Card, presentedSecret string) RegisterResult {
 func (r *Registry) suggestLocked(name string) string {
 	for i := 2; ; i++ {
 		cand := fmt.Sprintf("%s-%d", name, i)
-		if _, taken := r.agents[cand]; !taken {
+		_, taken := r.agents[cand]
+		if !taken && !r.nameCollidesLocked(cand) {
 			return cand
 		}
 	}

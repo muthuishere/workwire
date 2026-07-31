@@ -62,6 +62,9 @@ func New(cfg config.Config, st *store.Store, reg *registry.Registry, dir *contac
 	mux.HandleFunc("POST /agents/{name}/rpc", s.handleRPC)
 	mux.HandleFunc("POST /agents/{name}/listen-lease", s.handleLeaseAcquire)
 	mux.HandleFunc("DELETE /agents/{name}/listen-lease", s.handleLeaseRelease)
+	mux.HandleFunc("GET /groups", s.handleListGroups)
+	mux.HandleFunc("POST /groups/{name}/join", s.handleGroupJoin)
+	mux.HandleFunc("POST /groups/{name}/leave", s.handleGroupLeave)
 	mux.HandleFunc("GET /contacts", s.handleListContacts)
 	mux.HandleFunc("POST /contacts", s.handleAddContact)
 	mux.HandleFunc("POST /contacts/{id}/verify", s.handleVerifyContact)
@@ -166,7 +169,15 @@ func (s *Server) ingest(id auth.Identity, req sendRequest) (*envelope.Envelope, 
 	// Convergence + fan-out (ADR-009). Membership accrues from participation:
 	// a send carrying only thread_id goes to every current member but the
 	// sender, and sending into a thread joins you to it.
-	to := req.To
+	// A group is an AUDIENCE, not a room (ADR-012): `to:"@platform"` expands
+	// ONCE, here at ingest, to a snapshot of the group's current members.
+	// From there it is an ordinary fan-out and an ordinary thread — a peer
+	// who joins the group tomorrow does not retroactively enter it; they
+	// discover the thread and walk in (ADR-011).
+	to, err := s.registry.ExpandRecipients(req.To, from)
+	if err != nil {
+		return nil, http.StatusBadRequest, err.Error()
+	}
 	var closedOver []store.Dissent
 	if ts, exists := s.store.ThreadState(threadID, s.cfg.MaxThreadMessages); exists {
 		if status, msg := s.checkThreadRules(id, ts, req, &closedOver); msg != "" {
