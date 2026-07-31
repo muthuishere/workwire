@@ -64,14 +64,59 @@ func Defaults() Config {
 // resolvable), then env overrides. A container with no home dir and
 // WORKWIRE_* env vars operates env-only — no file is ever written.
 func Load() (Config, error) {
-	cfg := Defaults()
+	// TolerateEnv is the escape hatch a hook hands to the process it spawns:
+	// the child re-reads the same unreadable file, so without it a tolerant
+	// parent only buys a green exit code while the work stays undone.
+	if v := os.Getenv(TolerateEnv); v == "1" || v == "true" {
+		cfg, _ := LoadTolerant()
+		return cfg, nil
+	}
+	return load()
+}
 
+// TolerateEnv names the env var that makes an unparseable workwire.json
+// non-fatal (defaults are used instead).
+const TolerateEnv = "WORKWIRE_TOLERATE_BAD_CONFIG"
+
+// LoadTolerant never fails: an unparseable workwire.json yields the DEFAULTS
+// (with the config dir and every WORKWIRE_* override still applied) plus the
+// problem as an advisory second return, for callers whose contract is "always
+// exits 0" — a session the user did not ask to join must never be blocked, or
+// look broken, because of a file we auto-created.
+func LoadTolerant() (Config, error) {
+	cfg, err := load()
+	if err == nil {
+		return cfg, nil
+	}
+	fallback := Defaults()
+	fallback.ConfigDir = resolveConfigDir()
+	if fallback.DataDir == "" {
+		if fallback.ConfigDir != "" {
+			fallback.DataDir = filepath.Join(fallback.ConfigDir, "data")
+		} else {
+			fallback.DataDir = "/data"
+		}
+	}
+	applyEnv(&fallback)
+	return fallback, err
+}
+
+// resolveConfigDir is where workwire.json, admin-token, credentials.json and
+// the run/session state live.
+func resolveConfigDir() string {
 	dir := os.Getenv("WORKWIRE_CONFIG_DIR")
 	if dir == "" {
 		if home, err := os.UserHomeDir(); err == nil && home != "" {
 			dir = filepath.Join(home, ".config", "workwire")
 		}
 	}
+	return dir
+}
+
+func load() (Config, error) {
+	cfg := Defaults()
+
+	dir := resolveConfigDir()
 	cfg.ConfigDir = dir
 
 	if dir != "" {

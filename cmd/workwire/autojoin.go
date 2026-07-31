@@ -50,6 +50,27 @@ type skillConfig struct {
 	TokenEnv string `json:"tokenEnv"`
 }
 
+// applySkillConfig folds the CLIENT config into the resolved configuration.
+//
+// Precedence, one place, highest first:
+//
+//	command-line flag  >  WORKWIRE_* env  >  skill.json  >  workwire.json  >  defaults
+//
+// workwire.json is the HUB's file and a client setting there is a machine
+// default; skill.json is the client's own, so it wins over it. The env stays
+// above both (a container, or a one-off `WORKWIRE_HUB_URL=... workwire peers`,
+// must not be overridden by a file), and an explicit flag beats everything.
+//
+// `tokenEnv` NAMES an env var; it never holds a secret value.
+func applySkillConfig(cfg *config.Config, sc skillConfig) {
+	if sc.HubURL != "" && os.Getenv("WORKWIRE_HUB_URL") == "" {
+		cfg.HubURL = sc.HubURL
+	}
+	if sc.TokenEnv != "" && os.Getenv("WORKWIRE_TOKEN_ENV") == "" {
+		cfg.TokenEnv = sc.TokenEnv
+	}
+}
+
 func skillConfigPath(cfg config.Config) string {
 	return filepath.Join(cfg.ConfigDir, skillConfigName)
 }

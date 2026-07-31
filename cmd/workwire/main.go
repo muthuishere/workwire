@@ -32,11 +32,30 @@ func main() {
 		usage()
 		os.Exit(2)
 	}
-	cfg, err := config.Load()
-	if err != nil {
+	verb, args := os.Args[1], os.Args[2:]
+	var cfg config.Config
+	var err error
+	if verb == "session-start" {
+		// ADR-013's non-negotiable: the hook ALWAYS exits 0, immediately. A
+		// missing config, a corrupt config or a dead hub can never make a
+		// session fail to start, so the loader may not be the thing that does.
+		var bad error
+		cfg, bad = config.LoadTolerant()
+		if bad != nil {
+			noteAutoJoin(cfg, "config unreadable (%v) — continuing with defaults", bad)
+			// The listener we spawn re-reads the same file; tell it to be
+			// tolerant too, or auto-join stays dead behind a green exit code.
+			_ = os.Setenv(config.TolerateEnv, "1")
+		}
+	} else if cfg, err = config.Load(); err != nil {
 		fatal(err)
 	}
-	verb, args := os.Args[1], os.Args[2:]
+	// Client-side overrides from skill.json, below the WORKWIRE_* env and
+	// above workwire.json (see applySkillConfig). The hub's own `serve` reads
+	// only its own config — a client preference must not change how it serves.
+	if verb != "serve" {
+		applySkillConfig(&cfg, loadSkillConfig(skillConfigPath(cfg)))
+	}
 	switch verb {
 	case "serve":
 		err = cmdServe(cfg)
@@ -127,7 +146,12 @@ The service is optional: without it, run "workwire serve" yourself or let a
 loopback peer auto-start the hub.
 
 Config: ~/.config/workwire/workwire.json (hub, auto-created); WORKWIRE_* env overrides every key.
-Client config: ~/.config/workwire/skill.json ({"autoJoin":false,"agentName":"","hubUrl":""}).
+Client config: ~/.config/workwire/skill.json
+  {"autoJoin":false,"agentName":"","hubUrl":"","tokenEnv":""}
+  hubUrl / tokenEnv override the hub for CLIENT verbs only. Precedence, highest first:
+  flag > WORKWIRE_* env > skill.json > workwire.json > defaults. tokenEnv NAMES the env var
+  holding the token; a secret value never lives in a config file, and the locally minted
+  admin token is never sent to a non-loopback hub.
 `)
 }
 

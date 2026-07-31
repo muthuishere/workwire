@@ -371,3 +371,39 @@ a local disambiguation from the parent folder) — and join nothing.
 #### Scenario: asking for a suggestion never registers anything
 - WHEN the CLI asks the hub what free name to suggest
 - THEN it probes the existing card first and only then POSTs a credential-less registration to receive `409` + `suggestion`; a name the hub does not know is never created as a side effect
+
+### R18: The system SHALL provide `workwire session-start` as the auto-join hook entrypoint, which ALWAYS exits 0 and immediately — including the process it spawns — and SHALL resolve client configuration in one place with a stated precedence
+
+Auto-join is opted into (`skill.json`'s `autoJoin`, default OFF) and fires from a harness
+SessionStart hook. The property is an OUTCOME, not a mechanism: the hook can never block or
+fail a session start. A missing config, an unparseable `workwire.json`, an unreadable config
+dir, a corrupt `skill.json` or a dead hub SHALL all exit 0 and fast, and the tolerance SHALL
+extend to the detached `workwire listen` it spawns, which re-reads the same file — otherwise
+a green exit code hides a dead auto-join. Client configuration resolves with the precedence
+**flag > `WORKWIRE_*` env > `skill.json` > `workwire.json` > defaults**; `skill.json`'s
+`hubUrl` and `tokenEnv` apply to CLIENT verbs only (never to `serve`), and `tokenEnv` NAMES an
+env var — a secret value never lives in a config file. A remote hub named through `skill.json`
+is governed by auth R10 exactly like one named anywhere else.
+
+#### Scenario: a corrupt workwire.json cannot fail a session start
+- GIVEN `~/.config/workwire/workwire.json` contains invalid JSON
+- WHEN the harness runs `workwire session-start`
+- THEN it exits 0, returns immediately, and records the problem in the auto-join log
+- AND the configuration it uses is the defaults plus every `WORKWIRE_*` override
+
+#### Scenario: tolerance reaches the spawned listener
+- GIVEN the same corrupt file AND `autoJoin: true`
+- WHEN `session-start` spawns the detached `workwire listen`
+- THEN the child also tolerates the unreadable file and joins, instead of exiting 1 on the loader
+
+#### Scenario: missing or unreadable config dir
+- GIVEN no config dir, or one whose permissions deny reading
+- WHEN `workwire session-start` runs
+- THEN it exits 0 without creating noise on the session's output
+
+#### Scenario: skill.json names the hub
+- GIVEN `skill.json` sets `hubUrl` to a remote hub and `tokenEnv` to `TEAM_HUB_TOKEN`
+- WHEN a client verb runs with no `WORKWIRE_HUB_URL` in the environment
+- THEN it targets that hub and looks for the token in `$TEAM_HUB_TOKEN`
+- AND with `WORKWIRE_HUB_URL` set, the environment wins over `skill.json`
+- AND with no `$TEAM_HUB_TOKEN`, the verb fails naming that variable rather than sending the local admin token
