@@ -308,7 +308,9 @@ func cmdSessionStart(cfg config.Config, args []string) error {
 	// so, with the name to use instead, and join nothing.
 	if other := nameConflict(cfg, name, dir); other != "" {
 		msg := conflictMessage(name, other, absOf(dir), suggestFreeName(cfg, name, dir))
-		fmt.Println(msg)
+		for _, line := range strings.Split(msg, "\n") {
+			fmt.Println("workwire:", line)
+		}
 		noteAutoJoin(cfg, "%s", msg)
 		return nil
 	}

@@ -158,11 +158,10 @@ func hubSuggestion(cfg config.Config, name string) string {
 // conflictMessage is what a human (or a model) reads when two folders want
 // one name. It names both folders and what to do about it.
 func conflictMessage(name, other, dir, suggestion string) string {
-	msg := fmt.Sprintf("workwire: %q is already the peer name for %s — this folder (%s) has NOT joined", name, other, dir)
-	if suggestion != "" {
-		msg += fmt.Sprintf("\nworkwire: join it under a distinct name instead: workwire listen --agent %s --dir %s", suggestion, dir)
-	} else {
-		msg += fmt.Sprintf("\nworkwire: join it under a distinct name instead: workwire listen --agent <name> --dir %s", dir)
+	msg := fmt.Sprintf("%q is already the peer name for %s — this folder (%s) has NOT joined", name, other, dir)
+	if suggestion == "" {
+		suggestion = "<name>"
 	}
+	msg += fmt.Sprintf("\njoin it under a distinct name instead: workwire listen --agent %s --dir %s", suggestion, dir)
 	return msg
 }

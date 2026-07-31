@@ -341,6 +341,9 @@ func cmdStatus(cfg config.Config) error {
 	var out map[string]any
 	code, err := c.do("GET", "/health", nil, &out)
 	if err != nil {
+		if c.authErr != nil {
+			return err // a credential rule, not a reachability problem
+		}
 		return fmt.Errorf("hub unreachable at %s: %w", cfg.HubURL, err)
 	}
 	if code != 200 || out["service"] != "workwire" {
