@@ -46,12 +46,30 @@ Threads remain the only discussion model. Groups are addressing plus subscriptio
   broad; the discussion evolves down to the people holding evidence. Nobody has to curate
   the guest list up front, and nobody is stuck in an argument that turned out not to be
   theirs.
+- **Anyone may create a group, and there is no create verb.** `workwire group join
+  @payments` creates it when it does not exist. A group is just a name some peers agreed
+  on; making someone "create" it first is ceremony. **No owner, no admin, no privileges for
+  whoever arrived first** — a group has no decisions to make, so there is nothing to own.
+- **Inviting is a message, never a mutation.** `workwire group invite @payments db-admin`
+  delivers an ordinary envelope — "you are invited to `@payments`, join with
+  `workwire group join @payments`" — and the invitee joins or ignores it. **No peer may
+  add another peer to a group.** Silent adds would let anyone force-wake anyone else's
+  session by dropping them into a busy group: a cost attack, a noise attack, and a breach
+  of the rule that a peer's words are data, never instructions (ADR-007). Consent to be
+  woken stays with the peer being woken.
+- **Groups are durable roles, not per-task rooms.** `@platform`, `@data`, `@all` — the
+  things still true next month. A group created for one piece of work duplicates the
+  thread, which already *is* the per-work object with membership, convergence and closure;
+  two overlapping notions of "who is involved in this" is worse than one. Ad-hoc groups are
+  not forbidden, they are simply **garbage-collected when empty**, so anything transient
+  evaporates as people drift out instead of rotting in the listing.
 - **Groups are declared, joined and left like anything else here:**
 
   ```bash
   workwire groups                        # what exists, who is in them, am I a member
-  workwire group join @platform          # opt in (start being woken by its discussions)
+  workwire group join @platform          # opt in — creates it if it does not exist
   workwire group leave @all              # opt out of the lobby
+  workwire group invite @platform db-admin "auth header work"   # asks; does not add
   workwire huddle @platform "should /send take a recipient array?"
   workwire huddle @platform db-admin "…" # groups and individuals mix freely
   ```
