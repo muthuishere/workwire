@@ -48,20 +48,39 @@ func cmdListen(cfg config.Config, args []string) error {
 		return fmt.Errorf("no config dir resolvable; set WORKWIRE_CONFIG_DIR")
 	}
 
+	// Which tree this listener speaks for — the thing the name is derived
+	// from, and the thing a name collision is a collision OF.
+	originDir := *dir
+	if originDir == "" {
+		originDir, _ = os.Getwd()
+	}
+	// A name is one folder's identity. Another folder already holding it is a
+	// conflict, not an adoption: sharing it would put two codebases behind one
+	// peer, and the loser silently on the wire under no name at all.
+	if other := nameConflict(cfg, *agent, originDir); other != "" {
+		return fmt.Errorf("%s", conflictMessage(*agent, other, absOf(originDir), suggestFreeName(cfg, *agent, originDir)))
+	}
+
+	runDir := filepath.Join(cfg.ConfigDir, "run")
 	// Local singleton fast path first: cheap, no network (agent-skill R4).
-	lock, err := listen.AcquireLock(filepath.Join(cfg.ConfigDir, "run"), *agent)
+	lock, err := listen.AcquireLock(runDir, *agent)
 	if err != nil {
 		if _, ok := err.(listen.ErrLocked); ok {
 			// One listener per folder is enough, and a second session in the
 			// same folder is a normal, expected thing — not a failure. It
 			// adopts the running listener and exits 0; only the lock holder
 			// answers, so a question is never answered twice.
-			fmt.Fprintf(os.Stderr, "workwire listen: adopting the running listener for %s\n", *agent)
+			fmt.Fprintf(os.Stderr, "workwire listen: adopting the running listener for %s (%s)\n", *agent, absOf(originDir))
 			return nil
 		}
 		return err
 	}
 	defer lock.Release()
+	// Say which folder holds it, so the next session can tell "same folder,
+	// adopt" from "different folder, conflict".
+	_ = listen.WriteHolder(runDir, *agent, absOf(originDir))
+	defer listen.ClearHolder(runDir, *agent)
+	saveFolderBinding(cfg, originDir, *agent)
 
 	// Registration bootstrap credential. The locally minted admin token is a
 	// credential for the LOCAL hub and never leaves it (auth R10): against a
@@ -113,6 +132,8 @@ func cmdListen(cfg config.Config, args []string) error {
 	}
 	if r.AgentName() != *agent {
 		logf("registered as %s", r.AgentName())
+		// The hub renamed us; the folder keeps the name it actually got.
+		saveFolderBinding(cfg, originDir, r.AgentName())
 	}
 
 	stop := make(chan struct{})

@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/muthuishere/workwire/internal/config"
 	"github.com/muthuishere/workwire/internal/listen"
@@ -270,14 +271,30 @@ func cmdSessionStart(cfg config.Config, args []string) error {
 	}
 	name := sc.AgentName
 	if name == "" {
+		// A folder keeps the name it joined under; only a folder that has never
+		// joined derives one from its basename.
+		name = boundName(cfg, dir)
+	}
+	if name == "" {
 		name = filepath.Base(dir)
 	}
 	if name == "" || name == "." || name == string(filepath.Separator) {
 		return nil
 	}
+	// Two folders can share a basename. Sharing the IDENTITY is the bug: the
+	// second one is told it joined while it is on the wire under no name at
+	// all, and `ask <name>` is then answered about a different codebase. Say
+	// so, with the name to use instead, and join nothing.
+	if other := nameConflict(cfg, name, dir); other != "" {
+		msg := conflictMessage(name, other, absOf(dir), suggestFreeName(cfg, name, dir))
+		fmt.Println(msg)
+		noteAutoJoin(cfg, "%s", msg)
+		return nil
+	}
 	// One listener per folder is enough. The flock is the authority; if it is
-	// held, the running listener already covers this folder and this session
-	// is a passenger — it can ask and take part, it just is not the answerer.
+	// held BY THIS FOLDER, the running listener already covers it and this
+	// session is a passenger — it can ask and take part, it just is not the
+	// answerer.
 	if cfg.ConfigDir != "" {
 		lock, lerr := listen.AcquireLock(filepath.Join(cfg.ConfigDir, "run"), name)
 		if lerr != nil {
@@ -288,8 +305,27 @@ func cmdSessionStart(cfg config.Config, args []string) error {
 		}
 		lock.Release() // free it for the listener we are about to start
 	}
+	saveFolderBinding(cfg, dir, name)
 	spawnListener(cfg, name, dir)
 	return nil
+}
+
+// noteAutoJoin appends one line to the auto-join log. The hook is silent by
+// design, so anything worth knowing later has to land somewhere.
+func noteAutoJoin(cfg config.Config, format string, args ...any) {
+	if cfg.ConfigDir == "" {
+		return
+	}
+	if err := os.MkdirAll(cfg.ConfigDir, 0o755); err != nil {
+		return
+	}
+	f, err := os.OpenFile(filepath.Join(cfg.ConfigDir, "auto-join.log"),
+		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	fmt.Fprintf(f, "%s "+format+"\n", append([]any{time.Now().UTC().Format(time.RFC3339)}, args...)...)
 }
 
 // spawnListener is a seam: tests must never actually fork a listener out of

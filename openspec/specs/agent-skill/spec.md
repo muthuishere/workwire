@@ -338,3 +338,36 @@ place where messages live.
 #### Scenario: an invite is a request
 - WHEN an invite envelope for `@payments` arrives in the session inbox
 - THEN the session may join with `workwire group join @payments` or ignore it, and its membership is unchanged until it joins itself
+
+### R17: The system SHALL bind a derived peer name to ONE folder and SHALL report a collision rather than sharing an identity
+
+A derived name is the folder's basename, so two checkouts named `api` want the same peer
+name. The flock stays keyed by NAME — credentials, the session inbox file, the cursor and the
+hub lease are all name-scoped, and keying it by folder would give two same-named listeners one
+credential, one inbox and a deadlock on one lease. What the system SHALL NOT do is let the
+second folder share the first's identity while being told it joined. It SHALL persist a local
+`folder -> name` binding, record which folder holds a lock, and when a name is wanted by a
+DIFFERENT folder it SHALL report the conflict — naming both folders and a suggested free name
+(the hub's own `<name>-N` suggestion per registry-a2a R2 when the hub is reachable, otherwise
+a local disambiguation from the parent folder) — and join nothing.
+
+#### Scenario: two folders with the same basename
+- GIVEN `~/a/api` has joined as `api`
+- WHEN a session starts in `~/b/api`
+- THEN it does NOT join, does NOT take over `api`, and prints (and logs) that `api` belongs to `~/a/api`, with a suggested name to use instead
+- AND `workwire listen --agent api --dir ~/b/api` fails with the same message rather than adopting
+
+#### Scenario: the same folder again is still adoption
+- GIVEN `~/a/api` holds the lock for `api`
+- WHEN another session starts in `~/a/api`
+- THEN it adopts the running listener and exits 0 — one listener per folder, unchanged
+
+#### Scenario: the binding survives a restart
+- GIVEN `~/a/api` joined as `api` and its listener has since exited
+- WHEN a session starts in `~/a/api` again
+- THEN it joins as `api` (the folder keeps the name it joined under)
+- AND a session in `~/b/api` still gets the conflict, because the binding is persisted, not merely a live lock
+
+#### Scenario: asking for a suggestion never registers anything
+- WHEN the CLI asks the hub what free name to suggest
+- THEN it probes the existing card first and only then POSTs a credential-less registration to receive `409` + `suggestion`; a name the hub does not know is never created as a side effect
