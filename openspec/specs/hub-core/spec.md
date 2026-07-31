@@ -287,3 +287,77 @@ identical behavior on a laptop, in a `FROM scratch` container, or behind a rever
 - GIVEN thread `t-1` already has several messages and `late` has never polled it
 - WHEN `late` is addressed on `t-1` and polls its inbox
 - THEN the delivery's `context` carries the prior thread messages, each stamped `kind:"context"` and annotated with the speaker's `persona` where one is registered
+
+### R18: The system SHALL carry an auto-derived `origin` provenance block on every peer — `repo` (git remote normalised to `owner/name`, else the directory name), `branch`, `commit` (short SHA), `dirty`, `cwd`, `host` — supplied at registration and refreshed by re-registration, stored as given and NEVER verified (ADR-011 §1). It SHALL serve `origin` on `GET /agents/<name>/card` and `GET /agents`, stamp it on every accepted envelope, and attach it next to `from` and `persona` on every projected `context` entry. A peer that reports no repo/branch (a non-git directory) SHALL register and serve cleanly.
+
+#### Scenario: provenance round-trip
+- GIVEN a peer registers with `{"name":"api","origin":{"repo":"muthuishere/workwire","branch":"main","commit":"a1b2c3d"}}`
+- WHEN another peer reads the card, `GET /agents`, or a projected `context` entry authored by `api`
+- THEN the same `origin` is returned verbatim in all three
+
+#### Scenario: branch switch mid-session
+- GIVEN `api` re-registers with the same secret and `branch:"feat/dissent"`, `dirty:true`
+- WHEN its card is read again
+- THEN it reports the new branch and dirty flag
+
+#### Scenario: non-git directory
+- GIVEN a peer registers with an `origin` carrying only `cwd` and `host`
+- THEN registration succeeds and the card reports no `repo` and no `branch`
+
+### R19: The system SHALL accept `kind:"dissent"` as a first-class envelope that records an OPEN objection on thread state (peer, peer kind, text, provenance), and `kind:"withdraw"` which clears ONLY the sender's own dissent. Open dissents SHALL be derived from the persisted envelopes and survive a hub restart, and SHALL be reported on `GET /threads`.
+
+#### Scenario: dissent is tracked, withdraw is scoped
+- GIVEN `web` and `priya` have each sent `kind:"dissent"` on thread `t-1`
+- WHEN `web` sends `kind:"withdraw"`
+- THEN only `web`'s dissent is cleared and `priya`'s remains open
+
+#### Scenario: dissent survives restart
+- WHEN the hub restarts and replays its segments
+- THEN the same open dissents, with the dissenters' provenance, are reported
+
+### R20: The system SHALL enforce VALID CLOSURE (ADR-011 §3). A peer declares `kind` at registration: `agent` (default) or `human`. An AGENT initiator may send `kind:"resolved"` only when there are ZERO open dissents; otherwise `409` naming each dissenter with their provenance and both legitimate paths (withdrawal, or a human decision) — an agent can never override a dissent. A HUMAN peer may close any thread it is a member of, including one it did not initiate, with a required non-empty summary, and may close over any number of AGENT dissents; a human MAY NOT close over another HUMAN's open dissent (`409` naming that person), while their own dissent does not block their own close. The closing envelope SHALL record who closed the thread and which open dissents it closed over, and `GET /threads` SHALL report both.
+
+#### Scenario: agent blocked by a dissent
+- GIVEN thread `t-1` initiated by `api` carries an open dissent from `web`
+- WHEN `api` sends `kind:"resolved"`
+- THEN the hub responds `409` naming `web` and its `repo@branch`, pointing at withdrawal or a human, and the thread stays `open`
+
+#### Scenario: withdrawal unblocks the agent close
+- WHEN `web` sends `kind:"withdraw"` and `api` sends `kind:"resolved"` again
+- THEN the thread becomes `resolved`
+
+#### Scenario: a human closes over agent dissent
+- GIVEN `web` and `api` both hold open dissents
+- WHEN the human `muthu` sends `kind:"resolved"` with a non-empty summary
+- THEN the thread closes and the record names `muthu` as the closer and `web` and `api` as closed over
+
+#### Scenario: a human may not overrule a colleague
+- GIVEN the human `priya` holds an open dissent
+- WHEN the human `muthu` sends `kind:"resolved"`
+- THEN the hub responds `409` naming `priya` and the withdrawal path, and the thread stays open and contested
+
+#### Scenario: closing without a summary
+- WHEN a human sends `kind:"resolved"` with empty text
+- THEN the hub responds `400`
+
+### R21: The system SHALL accept `kind:"reopen"` from a HUMAN peer on a thread that is `resolved` or `stalled`, clearing the closure and restarting the round cap; an AGENT sending `reopen` receives `403`. A `kind:"dissent"` sent to a RESOLVED thread SHALL be accepted and preserved as history without reopening it; every other send to a resolved thread stays `409`. The round-cap behaviour of R16 is otherwise unchanged.
+
+#### Scenario: agents may not reopen
+- WHEN an agent sends `kind:"reopen"` on a resolved thread
+- THEN the hub responds `403` and the thread stays `resolved`
+
+#### Scenario: a human reopens
+- WHEN a human sends `kind:"reopen"` on a thread an agent closed
+- THEN the state returns to `open`, the closure record is cleared, and members may send again
+
+#### Scenario: a closed thread ends the decision, not the disagreement
+- WHEN an agent sends `kind:"dissent"` on a resolved thread
+- THEN it is stored as history, the thread stays `resolved`, and a plain message, `proposal`, `withdraw` or `resolved` from the same peer still returns `409`
+
+### R22: `GET /threads` SHALL list EVERY non-deleted thread to any authenticated peer — not only those the caller is a member of — carrying `thread_id`, `topic`, `initiator`, `members`, `count`, `state`, open `dissents`, closure record, and a `member` flag for the caller. Addressing controls delivery; discovery controls participation: a peer that was never addressed can find a thread and join it by sending into it. (Local-trust assumption; a shared hub needs per-workspace scoping — ADR-010.)
+
+#### Scenario: an uninvited peer discovers and joins
+- GIVEN thread `t-1` addressed only to `web`, `muthu` and `priya`
+- WHEN `dba`, who was never addressed, calls `GET /threads`
+- THEN `t-1` is listed with its topic and `member:false`, and after `dba` sends into it, it is a member and the listing reports `member:true`
+
