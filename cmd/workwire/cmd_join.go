@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
 
 	"github.com/muthuishere/workwire/internal/config"
@@ -11,6 +12,21 @@ import (
 	persona_ "github.com/muthuishere/workwire/internal/persona"
 	"github.com/muthuishere/workwire/internal/registry"
 )
+
+// joinDeclaredGroups opts the peer into the audiences its own AGENTS.md /
+// CLAUDE.md declares (ADR-012). Self-service only: this joins the
+// authenticated caller and nobody else. @all is joined by the hub.
+func joinDeclaredGroups(c *client, dir string) {
+	for _, g := range persona_.DeriveGroups(dir) {
+		var out map[string]any
+		code, err := c.do("POST", "/groups/"+url.PathEscape(g)+"/join", map[string]string{}, &out)
+		if err != nil || code != 200 {
+			fmt.Fprintf(os.Stderr, "could not join %s (%d)\n", g, code)
+			continue
+		}
+		fmt.Printf("joined %s\n", g)
+	}
+}
 
 // cmdJoin registers a peer and stores its credentials WITHOUT starting a
 // listener (ADR-011 §3): a person takes part from a plain terminal with
@@ -71,6 +87,7 @@ func cmdJoin(cfg config.Config, args []string) error {
 			return fmt.Errorf("re-join as %s failed (%d): %v — stored credentials may be stale", name, code, out)
 		}
 		fmt.Printf("rejoined as %s (%s) %s\n", name, kind, origin.Describe(prov))
+		joinDeclaredGroups(c, *dir)
 		return nil
 	}
 	var out struct {
@@ -95,6 +112,8 @@ func cmdJoin(cfg config.Config, args []string) error {
 	default:
 		return fmt.Errorf("join failed (%d): %s", code, out.Error)
 	}
+	c.token = out.AgentSecret
+	joinDeclaredGroups(c, *dir)
 	fmt.Printf("joined as %s (%s) %s\n", name, kind, origin.Describe(prov))
 	fmt.Fprintf(os.Stderr, "no listener started — use --as %s on say/resolve/threads/inbox\n", name)
 	return nil

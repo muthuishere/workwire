@@ -1,6 +1,6 @@
 // workwire — HTTP-only message hub for the work between workers.
 // Verbs: serve, send, inbox, peers, ask, status, huddle, say, resolve, threads,
-// listen, answer, install, uninstall.
+// groups, group, listen, answer, install, uninstall.
 package main
 
 import (
@@ -56,6 +56,10 @@ func main() {
 		err = cmdResolve(cfg, args)
 	case "join":
 		err = cmdJoin(cfg, args)
+	case "groups":
+		err = cmdGroups(cfg, args)
+	case "group":
+		err = cmdGroup(cfg, args)
 	case "reopen":
 		err = cmdReopen(cfg, args)
 	case "threads":
@@ -90,11 +94,15 @@ Usage:
   workwire peers                          list live agents + contacts
   workwire ask <agent> <question>         ask an agent and wait for the answer
   workwire status                         probe the hub /health
-  workwire huddle <name...> "<topic>"     open a discussion with several members; prints the thread id
+  workwire huddle <name...> "<topic>"     open a discussion; names and @groups mix freely; prints the thread id
   workwire say <thread> "<text>"          contribute (--proposal to recommend, --dissent to object, --withdraw to drop yours)
   workwire resolve <thread> "<summary>"   close a discussion (agent initiator: only with zero open dissents; a human peer may override agent dissent)
   workwire threads                        list live discussions: id, state, count, dissent, members
   workwire join <name> [--human]          register a peer (person or agent) WITHOUT starting a listener
+  workwire groups                         list audiences: name, member count, members (* = you are in it)
+  workwire group join @<group>            opt in — creates the group if it does not exist (no owner, no admin)
+  workwire group leave @<group>           opt out — leaving @all is how you go quiet
+  workwire group invite @<group> <peer> ["reason"]   ASK a peer to join; sends a message, adds nobody
   workwire reopen <thread> "<reason>"     reopen a resolved or stalled thread (humans only)
   workwire listen --agent <name>          singleton listener: deliver inbound questions to the session inbox file
   workwire answer <id> <text>             answer a delivered question by its concrete envelope id

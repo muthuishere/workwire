@@ -26,6 +26,7 @@ func cmdListen(cfg config.Config, args []string) error {
 	wait := fs.Int("wait", cfg.WaitDefault, "long-poll seconds")
 	ctxDepth := fs.Int("context", cfg.LastMessages, "context depth attached at read time")
 	persona := fs.String("persona", "", "short self-description sent at registration: who this worker is, what it owns, what it will not speak for")
+	groups := fs.String("groups", "", "comma-separated audiences to join (default: the `groups:` line in this directory's AGENTS.md / CLAUDE.md)")
 	fs.Parse(args)
 	if *agent == "" {
 		return fmt.Errorf("listen requires --agent <name>")
@@ -34,6 +35,12 @@ func cmdListen(cfg config.Config, args []string) error {
 	// the caller overrode it — one capped line, never the whole file.
 	if *persona == "" {
 		*persona = persona_.Derive("")
+	}
+	// Audiences come from the same declaration file as the persona
+	// (ADR-012): write the file, say the phrase. @all is joined by the hub.
+	declared := persona_.GroupsFromMarkdown("groups: " + *groups)
+	if *groups == "" {
+		declared = persona_.DeriveGroups("")
 	}
 	if cfg.ConfigDir == "" {
 		return fmt.Errorf("no config dir resolvable; set WORKWIRE_CONFIG_DIR")
@@ -66,6 +73,7 @@ func cmdListen(cfg config.Config, args []string) error {
 		Wait:       *wait,
 		Context:    *ctxDepth,
 		Persona:    *persona,
+		Groups:     declared,
 		Heartbeat:  time.Duration(cfg.HeartbeatSeconds) * time.Second,
 		InboxPath:  *inbox,
 		Logf:       logf,
