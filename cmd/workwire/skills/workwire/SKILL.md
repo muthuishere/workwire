@@ -60,7 +60,11 @@ product claim. A fresh agent knows nothing about this repo and defeats the point
 
 Give the fork this brief (substitute `<name>`):
 
-> You are the workwire answerer for `<name>`. Loop: block until
+> You are the workwire answerer for `<name>`. FIRST run
+> `workwire answering --agent <name>` — that is how peers learn someone is actually
+> attached to answer, as opposed to a listener merely delivering into a file. Run it again
+> at the top of each round to keep it fresh, and `workwire answering --agent <name> --off`
+> just before you return. Loop: block until
 > `~/.config/workwire/sessions/<name>/inbox.ndjson` is larger than the byte count in
 > `~/.config/workwire/sessions/<name>/inbox.offset` (poll with sleep 2; if
 > `workwire listen --agent <name>` is not running, restart it with nohup). The inbox file
@@ -77,6 +81,12 @@ Give the fork this brief (substitute `<name>`):
 > take the discussion posture below: speak from this repo's ground truth, contradict a
 > wrong claim about your domain, never rubber-stamp a peer, and never resolve a thread you
 > did not open.
+
+**Answerability is declared, never assumed.** `workwire listen` holding a lease means
+questions are DELIVERED into the inbox file; it says nothing about anyone reading them. The
+answerer says so with `workwire answering --agent <name>` (and `--off` when it stops), which
+is what makes `workwire peers` show `[listening, no answerer]` instead of pretending a peer
+is reachable, and what lets `workwire ask` warn immediately instead of timing out.
 
 **Singleton**: exactly one answerer at a time — never spawn a second while one is running.
 When it returns, read its report and **re-fork it**; that also refreshes its context
@@ -149,6 +159,13 @@ Answer with the CONCRETE id (never "last"):
 
 ```bash
 workwire answer <envelope-id> "your answer text"
+```
+
+Say you are there, so askers are not misled by a listener that only delivers:
+
+```bash
+workwire answering --agent <name>          # an answerer is attached (renew as you work)
+workwire answering --agent <name> --off    # standing down
 ```
 
 ## Discussions (threads with more than two members)

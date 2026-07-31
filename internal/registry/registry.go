@@ -126,6 +126,12 @@ type Registry struct {
 	ttl    time.Duration
 	agents map[string]*Agent // by name
 	leases map[string]*Lease // by agent name
+	// answerers records, per agent name, when something last declared itself
+	// ATTACHED to answer (ADR-013 stress finding B). Deliberately separate
+	// from leases: the lease is a delivery fact, this is an answerability
+	// fact, and auto-join makes them diverge by default. In-memory only —
+	// after a hub restart nobody is answering until they say so again.
+	answerers map[string]time.Time
 	// groups is the audience map (ADR-012): group name -> member set. It
 	// holds membership only; a group never holds a message.
 	groups map[string]map[string]bool
@@ -135,11 +141,12 @@ type Registry struct {
 // Open loads the persisted registry cache from dataDir (registry-a2a R5).
 func Open(dataDir string, ttl time.Duration) (*Registry, error) {
 	r := &Registry{
-		path:   filepath.Join(dataDir, "registry.json"),
-		ttl:    ttl,
-		agents: map[string]*Agent{},
-		leases: map[string]*Lease{},
-		now:    time.Now,
+		path:      filepath.Join(dataDir, "registry.json"),
+		ttl:       ttl,
+		agents:    map[string]*Agent{},
+		leases:    map[string]*Lease{},
+		answerers: map[string]time.Time{},
+		now:       time.Now,
 	}
 	if b, err := os.ReadFile(r.path); err == nil {
 		var list []*Agent
@@ -379,6 +386,36 @@ func (r *Registry) ListenerLive(name string) bool {
 	defer r.mu.Unlock()
 	l, ok := r.leases[name]
 	return ok && r.now().Sub(l.Renewed) <= r.ttl
+}
+
+// DeclareAnswering records (or clears) a peer's statement that something is
+// attached to ANSWER, not merely to receive. A lease says a listener is
+// delivering questions into a session inbox; it says nothing about whether
+// anyone is reading them. Only the peer itself can know, so it declares, and
+// the declaration ages out on the same TTL as liveness — an answerer that
+// stopped renewing has gone, exactly like a peer that stopped heartbeating.
+func (r *Registry) DeclareAnswering(name string, attached bool) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, ok := r.agents[name]; !ok {
+		return false
+	}
+	if !attached {
+		delete(r.answerers, name)
+		return true
+	}
+	r.answerers[name] = r.now()
+	return true
+}
+
+// AnswererLive reports whether a live answerer declaration exists — the
+// honest answer to "will this question be answered now?", as distinct from
+// ListenerLive's "is it being delivered?".
+func (r *Registry) AnswererLive(name string) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	at, ok := r.answerers[name]
+	return ok && r.now().Sub(at) <= r.ttl
 }
 
 // ReleaseLease implements DELETE /agents/<name>/listen-lease with the

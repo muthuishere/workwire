@@ -243,3 +243,34 @@ authenticated as the agent:
 #### Scenario: lease requires the agent's credentials
 - WHEN a peer without `repoA`'s `agentSecret` POSTs `/agents/repoA/listen-lease` on a token-mode hub
 - THEN the hub responds `401` (unauthenticated) or `403` (authenticated as someone else)
+
+### R11: The system SHALL report ANSWERABILITY separately from lease liveness: a peer declares an attached answerer via `POST /agents/<name>/answering`, and `GET /agents` plus the `POST /agents/<name>/ask` response SHALL carry both `listener` (a live lease exists — questions are being delivered) and `answering` (something is attached to read and answer them).
+
+A listen lease is a DELIVERY fact: it says a listener is writing inbound questions into a
+session inbox file. It has never meant anyone is reading that file, and join-by-default makes
+the divergence the resting state of a machine — a lease per folder, an answerer only where a
+session actually engaged. Only the peer itself can know, so it declares: `{"attached":true}`
+sets or renews, `{"attached":false}` stands down, and the declaration ages out on the same TTL
+as liveness. The endpoint requires the agent's own credential (or admin) — nobody declares
+answerability on another peer's behalf. Both fields are additive; `listener` keeps its
+meaning and its consumers.
+
+#### Scenario: a lease alone does not claim an answerer
+- GIVEN `api` holds a live listen lease and nothing has declared an answerer
+- WHEN a peer reads `GET /agents` or asks `api`
+- THEN `listener` is `true` and `answering` is `false`
+- AND the asking client warns that the peer is listening but nothing is attached to answer, instead of waiting out the timeout in silence
+
+#### Scenario: an attached answerer declares itself
+- GIVEN an answerer attached to `api`'s session inbox
+- WHEN it POSTs `/agents/api/answering` with `{"attached":true}`
+- THEN `answering` is `true` on `GET /agents` and on the ask response
+- AND a declaration that stops being renewed ages out on the registry TTL
+
+#### Scenario: standing down leaves the lease alone
+- WHEN the answerer POSTs `{"attached":false}`
+- THEN `answering` becomes `false` while `listener` stays `true` — delivery continues, and questions are queued for the session's next engagement
+
+#### Scenario: answerability may only be declared by the peer itself
+- WHEN a peer holding a different agent's credential POSTs `/agents/api/answering`
+- THEN the hub responds `403`, and `404` for an unknown agent

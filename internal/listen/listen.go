@@ -65,6 +65,11 @@ type Options struct {
 	BaseBackoff      time.Duration
 	MaxBackoff       time.Duration
 	ContendedBackoff time.Duration
+	// AnswererIdle is how long after the last sign of an attached answerer the
+	// listener keeps declaring one to the hub. The listener delivers; it never
+	// answers, so it must not claim answerability on its own — the evidence is
+	// the session side touching `answerer` or advancing `inbox.offset`.
+	AnswererIdle time.Duration
 }
 
 // State is the persisted poll cursor plus a bounded dedupe window of
@@ -97,6 +102,9 @@ type Runner struct {
 	// same tree — restarting from the same folder must change nothing.
 	pinnedPersona string
 	pinnedProject string
+	// answering is the last state declared to the hub, so an unchanged FALSE
+	// costs nothing; a TRUE is re-declared every heartbeat to renew its TTL.
+	answering bool
 }
 
 // condition classifies why the listener is not currently connected. Every one
@@ -204,6 +212,11 @@ func New(opts Options) (*Runner, error) {
 	if opts.ContendedBackoff <= 0 {
 		opts.ContendedBackoff = 30 * time.Second
 	}
+	if opts.AnswererIdle <= 0 {
+		// The skill time-boxes an answerer fork to roughly fifteen idle
+		// minutes; outliving it by much would put the lie back.
+		opts.AnswererIdle = 15 * time.Minute
+	}
 	r := &Runner{
 		opts:      opts,
 		http:      &http.Client{Timeout: time.Duration(opts.Wait+30) * time.Second},
@@ -232,6 +245,11 @@ func (r *Runner) InboxPath() string {
 	}
 	return filepath.Join(r.sessDir, "inbox.ndjson")
 }
+
+// answererMarkPath is the file an attached answerer touches to say it is
+// there (`workwire answering --agent <name>`), before it has answered
+// anything.
+func (r *Runner) answererMarkPath() string { return filepath.Join(r.sessDir, "answerer") }
 
 // offsetPath is where the session-side consumer persists its byte offset
 // (Spike-01 mechanism (a)); the rotation guard reads it, never writes it.
@@ -654,6 +672,48 @@ func (r *Runner) maybeRotate() {
 	r.opts.Logf("rotated inbox file (%d bytes fully consumed)", fi.Size())
 }
 
+// AnswererAttached reports whether the session side shows any recent sign of
+// an answerer: a declaration file it touched, or a consumed-to offset it
+// advanced. The listener holding a lease is NOT evidence — that is precisely
+// the conflation this exists to end (ADR-013 stress finding B).
+func (r *Runner) AnswererAttached() bool {
+	newest := time.Time{}
+	for _, p := range []string{r.answererMarkPath(), r.offsetPath()} {
+		if fi, err := os.Stat(p); err == nil && fi.ModTime().After(newest) {
+			newest = fi.ModTime()
+		}
+	}
+	if newest.IsZero() {
+		return false
+	}
+	return time.Since(newest) <= r.opts.AnswererIdle
+}
+
+// declareAnswering tells the hub what this peer honestly knows about its own
+// answerability. Best effort: a hub that refuses it changes nothing else.
+func (r *Runner) declareAnswering() {
+	if r.secret == "" {
+		return
+	}
+	attached := r.AnswererAttached()
+	if !attached && !r.answering {
+		return // nothing to say, and nothing to renew
+	}
+	code, err := r.do("POST", "/agents/"+url.PathEscape(r.agentName)+"/answering",
+		r.secret, map[string]bool{"attached": attached}, nil)
+	if err != nil || code != 200 {
+		return
+	}
+	if attached != r.answering {
+		if attached {
+			r.opts.Logf("an answerer is attached for %s", r.agentName)
+		} else {
+			r.opts.Logf("no answerer attached for %s — questions are delivered but not answered", r.agentName)
+		}
+	}
+	r.answering = attached
+}
+
 // connect makes the listener usable: registered (recovering the credential if
 // the hub rejected it) and holding the listen lease.
 func (r *Runner) connect() error {
@@ -795,6 +855,7 @@ func (r *Runner) Run(stop <-chan struct{}) error {
 			attempt = 0
 			r.note(condOK, nil)
 			r.JoinDeclaredGroups()
+			r.declareAnswering()
 			r.opts.Logf("listening as %s (inbox file %s)", r.agentName, r.InboxPath())
 		}
 		select {
@@ -812,6 +873,9 @@ func (r *Runner) Run(stop <-chan struct{}) error {
 			if err := r.Heartbeat(); err != nil {
 				r.opts.Logf("provenance refresh failed: %v", err)
 			}
+			// Answerability is renewed (or withdrawn) on the same cadence as
+			// liveness, so `ask` never suppresses its warning on a stale fact.
+			r.declareAnswering()
 		default:
 		}
 		n, err := r.PollOnce()

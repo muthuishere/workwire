@@ -81,10 +81,16 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 			"origin":       a.Origin,
 			"capabilities": a.Capabilities,
 			"skills":       a.Skills,
-			// Registered is not the same as reachable: listener says whether a
-			// live listen lease exists, i.e. who can answer right now.
-			"listener": s.registry.ListenerLive(a.Name),
-			"lastSeen": a.LastSeen.UTC().Format(time.RFC3339Nano),
+			// Registered is not the same as reachable, and reachable is not the
+			// same as answerable. `listener` is the delivery fact: a live listen
+			// lease exists, so questions are being written into a session inbox.
+			// `answering` is the answerability fact: something has declared
+			// itself attached to READ that inbox. Auto-join takes the lease for
+			// every folder while only an engaged session answers, so the two
+			// legitimately differ and are reported separately.
+			"listener":  s.registry.ListenerLive(a.Name),
+			"answering": s.registry.AnswererLive(a.Name),
+			"lastSeen":  a.LastSeen.UTC().Format(time.RFC3339Nano),
 		})
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"agents": out})
@@ -184,7 +190,8 @@ func (s *Server) handleAsk(w http.ResponseWriter, r *http.Request) {
 	// asks), but the asker deserves to know nobody is listening rather than
 	// staring at a silent timeout.
 	out := map[string]any{"thread_id": env.ThreadID, "message_id": env.ID,
-		"listener": s.registry.ListenerLive(name)}
+		"listener":  s.registry.ListenerLive(name),
+		"answering": s.registry.AnswererLive(name)}
 	if a, ok := s.registry.Get(name); ok {
 		out["last_seen"] = a.LastSeen.UTC().Format(time.RFC3339Nano)
 	}
@@ -220,6 +227,37 @@ func (s *Server) handleLeaseAcquire(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"leaseId": res.LeaseID, "ttl": res.TTL})
+}
+
+// POST /agents/{name}/answering (registry-a2a R11): a peer declares that
+// something is ATTACHED TO ANSWER for it — `{"attached":true}` to declare or
+// renew, `{"attached":false}` to stand down. Requires the agent's own
+// credentials (or admin): nobody may declare answerability on another peer's
+// behalf. The declaration ages out on the registry TTL, so an answerer that
+// stops renewing stops counting.
+func (s *Server) handleAnswering(w http.ResponseWriter, r *http.Request) {
+	id, ok := s.identify(w, r)
+	if !ok {
+		return
+	}
+	name := r.PathValue("name")
+	if id.Kind == auth.KindAgent && id.Agent.Name != name {
+		writeErr(w, http.StatusForbidden, "forbidden: credential does not correspond to agent")
+		return
+	}
+	var req struct {
+		Attached *bool `json:"attached"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	attached := true
+	if req.Attached != nil {
+		attached = *req.Attached
+	}
+	if !s.registry.DeclareAnswering(name, attached) {
+		writeErr(w, http.StatusNotFound, "agent not found")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"answering": s.registry.AnswererLive(name)})
 }
 
 // DELETE /agents/{name}/listen-lease with the current leaseId → 204.

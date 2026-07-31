@@ -70,6 +70,8 @@ func main() {
 		err = cmdListen(cfg, args)
 	case "answer":
 		err = cmdAnswer(cfg, args)
+	case "answering":
+		err = cmdAnswering(cfg, args)
 	case "session-start":
 		err = cmdSessionStart(cfg, args)
 	case "install":
@@ -110,6 +112,7 @@ Usage:
   workwire reopen <thread> "<reason>"     reopen a resolved or stalled thread (humans only)
   workwire listen --agent <name>          singleton listener: deliver inbound questions to the session inbox file
   workwire answer <id> <text>             answer a delivered question by its concrete envelope id
+  workwire answering --agent <name>       declare an answerer attached to this peer (--off to stand down)
   workwire install --service --skills     recommended setup: hub as a background service + the agent skill
   workwire install --all                  the above PLUS opt-in auto-join
   workwire install --auto                 opt in to auto-join: a SessionStart hook so EVERY session joins its own folder
@@ -435,12 +438,18 @@ func cmdPeers(cfg config.Config) error {
 		if m, ok := a["origin"].(map[string]any); ok {
 			prov = origin.FromMap(m).String()
 		}
-		// A peer with no live listen lease is registered but cannot answer
-		// right now; say so rather than implying it is reachable.
+		// Three honest states, not two. A lease means questions are DELIVERED;
+		// an answerer means they are READ. Auto-join takes a lease for every
+		// folder, so "listening, nothing answering" is common and must not
+		// masquerade as reachable.
 		live, _ := a["listener"].(bool)
+		answering, _ := a["answering"].(bool)
 		mark := ""
-		if !live {
+		switch {
+		case !live:
 			mark = "  [no live listener]"
+		case !answering:
+			mark = "  [listening, no answerer]"
 		}
 		fmt.Printf("%-7s  %-16v %-34s %v%s\n", kind, a["name"], prov, about, mark)
 	}
@@ -475,6 +484,7 @@ func cmdAsk(cfg config.Config, args []string) error {
 		ThreadID  string `json:"thread_id"`
 		MessageID string `json:"message_id"`
 		Listener  bool   `json:"listener"`
+		Answering bool   `json:"answering"`
 		LastSeen  string `json:"last_seen"`
 		Error     string `json:"error"`
 	}
@@ -485,11 +495,19 @@ func cmdAsk(cfg config.Config, args []string) error {
 	if code != 202 {
 		return fmt.Errorf("ask failed (%d): %s", code, out.Error)
 	}
-	if !out.Listener {
+	switch {
+	case !out.Listener:
 		// Queued delivery is correct and valuable — but silence is not. Say
 		// why nothing is happening instead of timing out five minutes later.
 		fmt.Fprintf(os.Stderr,
 			"warning: %s is registered but has no live listener%s — the question is queued and will be answered when its session comes back\n",
+			target, lastSeenPhrase(out.LastSeen))
+	case !out.Answering:
+		// The dangerous middle state: a listener is delivering the question
+		// into a session inbox nobody is reading. Without this line the ask
+		// simply times out, which is the exact failure the warning exists for.
+		fmt.Fprintf(os.Stderr,
+			"warning: %s is listening but nothing is attached to answer%s — the question is delivered and will be answered when its session next picks it up\n",
 			target, lastSeenPhrase(out.LastSeen))
 	}
 	fmt.Fprintf(os.Stderr, "asked %s (thread %s); waiting for the answer...\n", target, out.ThreadID)

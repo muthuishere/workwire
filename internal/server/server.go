@@ -62,6 +62,7 @@ func New(cfg config.Config, st *store.Store, reg *registry.Registry, dir *contac
 	mux.HandleFunc("POST /agents/{name}/rpc", s.handleRPC)
 	mux.HandleFunc("POST /agents/{name}/listen-lease", s.handleLeaseAcquire)
 	mux.HandleFunc("DELETE /agents/{name}/listen-lease", s.handleLeaseRelease)
+	mux.HandleFunc("POST /agents/{name}/answering", s.handleAnswering)
 	mux.HandleFunc("GET /groups", s.handleListGroups)
 	mux.HandleFunc("POST /groups/{name}/join", s.handleGroupJoin)
 	mux.HandleFunc("POST /groups/{name}/leave", s.handleGroupLeave)
