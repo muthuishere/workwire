@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/muthuishere/workwire/internal/auth"
@@ -172,6 +173,22 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 	}
 	s.metrics.sends.Add(1)
 	out := map[string]any{"id": env.ID, "thread_id": env.ThreadID, "ts": env.TS}
+	// Where the traffic actually is. `ask` has warned about an unattended peer
+	// since ADR-014, but two and a half minutes of live monitoring on
+	// 2026-08-01 recorded 3 sends and ZERO asks: the mesh talks with `send`,
+	// so the warning belonged here too. A recipient whose listener is live but
+	// has nothing attached to answer is receiving into a file nobody reads.
+	var unattended []string
+	for _, rcpt := range env.To {
+		if s.registry.ListenerLive(rcpt) && !s.registry.AnswererLive(rcpt) {
+			unattended = append(unattended, rcpt)
+		}
+	}
+	if len(unattended) > 0 {
+		out["unattended"] = unattended
+		out["delivery"] = "queued: " + strings.Join(unattended, ", ") +
+			" have a live listener but nothing attached to answer — this is stored and will be read when those sessions come back"
+	}
 	// The same announcement retyped once per peer is the most expensive habit
 	// on this mesh (28 of 77 live threads on 2026-08-01). The hub cannot
 	// forbid it — a message to one peer is ordinary — but it can refuse to let

@@ -448,6 +448,11 @@ func cmdSend(cfg config.Config, args []string) error {
 	if hint, ok := out["hint"].(string); ok && hint != "" {
 		fmt.Fprintf(os.Stderr, "workwire: %s\n", hint)
 	}
+	// Say it at the moment of sending, not five minutes later when no reply
+	// has come: a peer can be listening and still have nobody reading.
+	if d, ok := out["delivery"].(string); ok && d != "" {
+		fmt.Fprintf(os.Stderr, "workwire: %s\n", d)
+	}
 	return nil
 }
 

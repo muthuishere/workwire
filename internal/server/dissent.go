@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/muthuishere/workwire/internal/auth"
+	"github.com/muthuishere/workwire/internal/registry"
 	"github.com/muthuishere/workwire/internal/store"
 )
 
@@ -39,6 +40,16 @@ func describeDissents(list []store.Dissent) string {
 func (s *Server) checkThreadRules(id auth.Identity, ts store.ThreadState, req sendRequest, closedOver *[]store.Dissent) (int, string) {
 	from := id.Name()
 	human := id.IsHuman()
+	// The admin token is an OPERATOR credential — the person running the hub,
+	// doing maintenance. It may close a thread it did not open (consolidating
+	// duplicates, retiring dead announcements) without pretending to be a
+	// human peer whose ruling carries decision precedence (ADR-011 §3).
+	//
+	// Closing 29 duplicate threads on 2026-08-01 required registering a human
+	// peer purely to have the authority, which put the heaviest voice on the
+	// mesh behind pure housekeeping. Operator work should sound like operator
+	// work.
+	operator := id.Kind == auth.KindAdmin
 
 	// Reopen first: it is the one send that is legitimate on a closed or
 	// stalled thread, and only a human may do it (ADR-011 §3a).
@@ -70,6 +81,20 @@ func (s *Server) checkThreadRules(id auth.Identity, ts store.ThreadState, req se
 	}
 
 	if req.Kind != "resolved" {
+		return 0, ""
+	}
+	if operator {
+		// An operator closes over agent dissent like a human, but never over a
+		// HUMAN's open dissent: maintenance may tidy a mesh, not overrule a
+		// person.
+		for _, d := range ts.Dissents {
+			if d.Kind == registry.KindHuman && d.Peer != from {
+				return http.StatusConflict, fmt.Sprintf(
+					"thread %s has an open dissent from %s (a human) — an operator may not close over a person's objection: %s",
+					ts.ThreadID, d.Peer, describeDissent(d))
+			}
+		}
+		*closedOver = append(*closedOver, ts.Dissents...)
 		return 0, ""
 	}
 
