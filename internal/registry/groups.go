@@ -241,7 +241,14 @@ func (r *Registry) ExpandRecipients(to []string, sender string) ([]string, error
 	}
 	for _, entry := range to {
 		if !IsGroup(entry) {
-			add(entry, false)
+			// A typed recipient may be a name, an old alias, or the REPO
+			// itself — people address the work, not the label.
+			if resolved, ambiguous := r.resolveTargetLocked(entry); len(ambiguous) > 0 {
+				return nil, fmt.Errorf("%q matches several live peers (%s) — name the one you mean",
+					entry, strings.Join(ambiguous, ", "))
+			} else {
+				add(resolved, false)
+			}
 			continue
 		}
 		name := NormalizeGroup(entry)

@@ -1,6 +1,9 @@
 package server
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // One tree, one identity — with as many NAMES as people actually use
 // (ADR-015). On 2026-08-01 `muthuishere/toolnexus@cljc` was on the wire three
@@ -94,5 +97,76 @@ func TestNoProvenanceNeverAliases(t *testing.T) {
 	h.register("plain-a")
 	if code, out := h.req(adminToken, "POST", "/agents", map[string]any{"name": "plain-b"}); code != 201 {
 		t.Fatalf("second bare peer: %d %v", code, out)
+	}
+}
+
+// A person is not a session, even in the same folder. Aliasing a human onto an
+// agent would hand that session human precedence at closure (ADR-011 §3), or
+// take the person's name away entirely — which is what happened the first time
+// `workwire join muthu --human` ran inside a repo that was already on the wire.
+func TestAHumanIsNeverAliasedOntoAnAgent(t *testing.T) {
+	h := newHub(t, nil)
+	card := originCard("muthuishere/workwire", "main", "d6cffb8", false)
+	h.registerPeer("workwire-main", "agent", card)
+
+	code, out := h.req(adminToken, "POST", "/agents", map[string]any{
+		"name": "muthu", "kind": "human", "origin": card["origin"],
+	})
+	if code != 201 {
+		t.Fatalf("a human in an agent's tree must get its own identity: %d %v", code, out)
+	}
+	if out["aliasOf"] != nil {
+		t.Fatalf("human aliased onto an agent: %v", out)
+	}
+	code, card2 := h.req(adminToken, "GET", "/agents/muthu/card", nil)
+	if code != 200 || card2["kind"] != "human" {
+		t.Fatalf("muthu must exist as a human peer: %d %v", code, card2)
+	}
+}
+
+// People address the WORK, not the label. A peer renames, a worktree changes
+// branch, an alias is dropped — and every note that said `koine` points at
+// nothing, with the message accepted and black-holed because an unheld name
+// still looks like a valid recipient.
+func TestAddressingARepoReachesThePeerStandingInIt(t *testing.T) {
+	h := newHub(t, nil)
+	h.registerPeer("koine-main", "agent", originCard("muthuishere/koine", "main", "deca1ff", false))
+	sender := h.registerHuman("asker")
+
+	for _, form := range []string{"koine", "muthuishere/koine", "koine@main", "muthuishere/koine@main"} {
+		code, out := h.req(sender, "POST", "/send", map[string]any{"to": []string{form}, "text": "probe " + form})
+		if code != 200 {
+			t.Fatalf("send to %q: %d %v", form, code, out)
+		}
+		thread, _ := out["thread_id"].(string)
+		_, inbox := h.req(adminToken, "GET", "/inbox?agent=koine-main&since=0", nil)
+		found := false
+		for _, raw := range inbox["messages"].([]any) {
+			if m, _ := raw.(map[string]any); m["thread_id"] == thread {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatalf("%q did not reach the peer standing in that tree", form)
+		}
+	}
+}
+
+// Two live branches of one repo are two codebases with two different answers.
+// Picking one silently is how a question gets a confidently wrong reply.
+func TestAmbiguousRepoAddressingIsReportedNotGuessed(t *testing.T) {
+	h := newHub(t, nil)
+	a := h.registerPeer("tn-main", "agent", originCard("muthuishere/toolnexus", "main", "aaa1111", false))
+	b := h.registerPeer("tn-cljc", "agent", originCard("muthuishere/toolnexus", "cljc", "2f11e8a", false))
+	h.req(a, "POST", "/agents/tn-main/listen-lease", map[string]string{})
+	h.req(b, "POST", "/agents/tn-cljc/listen-lease", map[string]string{})
+	sender := h.registerHuman("asker")
+
+	code, out := h.req(sender, "POST", "/send", map[string]any{"to": []string{"toolnexus"}, "text": "which one?"})
+	if code != 400 {
+		t.Fatalf("ambiguous repo = %d %v, want 400 naming the candidates", code, out)
+	}
+	if msg, _ := out["error"].(string); !strings.Contains(msg, "tn-main") || !strings.Contains(msg, "tn-cljc") {
+		t.Fatalf("the error must name both peers: %q", msg)
 	}
 }

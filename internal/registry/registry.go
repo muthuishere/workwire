@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -254,7 +255,12 @@ func (r *Registry) Register(card Card, presentedSecret string) RegisterResult {
 	// becomes an ALIAS of the identity that is already there, so `ask clojure`
 	// and `ask toolnexus-cljc` reach the same session, the same inbox and the
 	// same answerer.
-	if holder := r.treeHolderLocked(card); holder != "" {
+	// A tree is one AGENT identity, not one person: a human sitting in the same
+	// repo as a session is a different peer with different precedence at
+	// closure (ADR-011 §3). Merging them would hand a session a human's
+	// authority, or take a person's name away. Kinds that differ are never
+	// aliases of each other, so the tree rule only applies within a kind.
+	if holder := r.treeHolderLocked(card); holder != "" && NormalizeKind(r.agents[holder].Kind) == NormalizeKind(card.Kind) {
 		a := r.agents[holder]
 		if !a.HasAlias(card.Name) {
 			a.Aliases = append(a.Aliases, card.Name)
@@ -416,6 +422,72 @@ func (r *Registry) resolveLocked(name string) (*Agent, bool) {
 	return nil, false
 }
 
+// ResolveTarget maps anything a sender might type at a peer — a name, an old
+// alias, a repo, `owner/repo`, `repo@branch` — to the identity that actually
+// speaks for it, preferring one with a live listener.
+//
+// This exists because people address the WORK, not the label. A peer renames
+// itself, a worktree changes branch, an alias is dropped, and every note,
+// transcript and habit that said `koine` is suddenly pointing at nothing —
+// the message is accepted and black-holed, because a name nobody holds still
+// looks like a valid recipient. Addressing `koine` should reach whoever is
+// standing in `muthuishere/koine` right now.
+//
+// Order: exact name, then alias, then the tree — full `owner/repo`,
+// `repo@branch`, or the bare repo name. Ambiguity is reported, never guessed:
+// two live branches of one repo are two different codebases with two
+// different answers, and picking one silently is how a question gets a
+// confidently wrong reply.
+func (r *Registry) ResolveTarget(name string) (canonical string, candidates []string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.resolveTargetLocked(name)
+}
+
+func (r *Registry) resolveTargetLocked(name string) (canonical string, candidates []string) {
+	if a, ok := r.resolveLocked(name); ok {
+		return a.Name, nil
+	}
+	want := strings.ToLower(strings.TrimSpace(name))
+	if want == "" {
+		return name, nil
+	}
+	var live, any []string
+	for _, a := range r.agents {
+		if a.Origin == nil || a.Origin.Repo == "" {
+			continue
+		}
+		repo := strings.ToLower(a.Origin.Repo)
+		base := repo
+		if i := strings.LastIndex(base, "/"); i >= 0 {
+			base = base[i+1:]
+		}
+		branch := strings.ToLower(a.Origin.Branch)
+		if want != repo && want != base &&
+			want != repo+"@"+branch && want != base+"@"+branch {
+			continue
+		}
+		any = append(any, a.Name)
+		if r.listenerLiveLocked(a.Name) {
+			live = append(live, a.Name)
+		}
+	}
+	pick := live
+	if len(pick) == 0 {
+		pick = any
+	}
+	sort.Strings(pick)
+	switch len(pick) {
+	case 0:
+		return name, nil
+	case 1:
+		return pick[0], nil
+	default:
+		// Several branches of one repo: say so and let the sender choose.
+		return name, pick
+	}
+}
+
 // Canonical returns the identity name for any label, or the input unchanged
 // when nothing is registered under it.
 func (r *Registry) Canonical(name string) string {
@@ -546,6 +618,10 @@ func (r *Registry) AcquireLease(name, presentedLeaseID string) LeaseResult {
 func (r *Registry) ListenerLive(name string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	return r.listenerLiveLocked(name)
+}
+
+func (r *Registry) listenerLiveLocked(name string) bool {
 	l, ok := r.leases[name]
 	return ok && r.now().Sub(l.Renewed) <= r.ttl
 }
