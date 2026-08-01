@@ -140,7 +140,10 @@ func cmdDoctor(cfg config.Config, args []string) error {
 			}
 		}
 		switch {
-		case unread > 0 && attached == "" && idle > 30*time.Minute:
+		// A declaration that has not been renewed for hours is not evidence of
+		// an answerer, it is the fossil of one — so the ghost case is judged on
+		// the age of the evidence, never on its mere existence.
+		case unread > 0 && idle > 30*time.Minute:
 			warn("%-28s %d unread bytes, nothing read for %s — this looks like a GHOST", name, unread, idle.Round(time.Minute))
 			note("a listener outliving its session; it stands down by itself, or `workwire forget %s`", name)
 		case unread > 0 && attached == "":
