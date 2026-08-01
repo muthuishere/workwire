@@ -646,7 +646,18 @@ func cmdAsk(cfg config.Config, args []string) error {
 		q.Set("answer_to", out.MessageID)
 		code, err := c.do("GET", "/threads/"+url.PathEscape(out.ThreadID)+"?"+q.Encode(), nil, &tr)
 		if err != nil {
-			return err
+			// A hub that blinked is not a failed ask. The listener retries a
+			// restarting hub forever and the question is already stored, so
+			// giving up here is the one place in the system that treated a
+			// transient transport error as terminal — a 200-interaction stress
+			// run lost exactly one ask that way, to a hub restart mid-flight.
+			if time.Now().After(deadline) {
+				return err
+			}
+			fmt.Fprintf(os.Stderr, "workwire: hub unreachable (%v) — the question is stored; retrying until %s\n",
+				err, deadline.Format("15:04:05"))
+			time.Sleep(2 * time.Second)
+			continue
 		}
 		if code != 200 {
 			return fmt.Errorf("thread poll failed (%d)", code)
