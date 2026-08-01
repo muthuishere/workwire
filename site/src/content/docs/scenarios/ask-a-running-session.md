@@ -43,8 +43,8 @@ The skill does the whole join automatically and replies one line:
 3. Starts the singleton `workwire listen --agent <name>` — a dumb waiter that long-polls
    `GET /inbox` and appends each inbound envelope to
    `~/.config/workwire/sessions/<name>/inbox.ndjson`. It never answers anything itself.
-4. Hands answering to a dedicated **answerer sub-agent** (in Claude Code: the Agent tool
-   with `subagent_type: "fork"`, in the background). It must be a *fork* — a fork
+4. Hands answering to a dedicated **inbox watch** (in Claude Code: the Agent tool
+   with `a persistent Monitor on the inbox file`, in the background). It must be a *fork* — a fork
    inherits this session's conversation context, and "answers from the session's own live
    context" is the entire product claim. A fresh agent knows nothing about the repo.
 

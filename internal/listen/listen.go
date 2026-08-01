@@ -54,7 +54,10 @@ type Options struct {
 	// RotateMaxBytes rotates (truncates) the inbox file once it exceeds this
 	// size AND the consumer's persisted offset says it is fully consumed.
 	RotateMaxBytes int64
-	Logf           func(format string, args ...any)
+	// BacklogMaxBytes caps UNREAD bytes in the session inbox before the
+	// listener stops taking delivery (0 = the default).
+	BacklogMaxBytes int64
+	Logf            func(format string, args ...any)
 	// MaxRetries is the escape hatch: 0 (the default) means retry forever —
 	// the listener must never die because the hub blinked. A positive value
 	// gives up after that many consecutive failed attempts.
@@ -83,14 +86,15 @@ const dedupeWindow = 1000
 
 // Runner is one listen loop for one agent.
 type Runner struct {
-	opts      Options
-	http      *http.Client
-	secret    string
-	agentName string // possibly the hub-suggested name
-	leaseID   string
-	sessDir   string
-	state     State
-	delivered map[string]bool
+	opts         Options
+	http         *http.Client
+	secret       string
+	agentName    string // possibly the hub-suggested name
+	pausedLogged bool   // backpressure engaged, said once
+	leaseID      string
+	sessDir      string
+	state        State
+	delivered    map[string]bool
 	// cond is the last logged connection condition, so a long outage logs one
 	// line per state transition instead of one per attempt.
 	cond condition
@@ -199,6 +203,9 @@ func New(opts Options) (*Runner, error) {
 	}
 	if opts.RotateMaxBytes <= 0 {
 		opts.RotateMaxBytes = 8 << 20
+	}
+	if opts.BacklogMaxBytes <= 0 {
+		opts.BacklogMaxBytes = 4 << 20
 	}
 	if opts.Logf == nil {
 		opts.Logf = func(string, ...any) {}
@@ -575,6 +582,27 @@ func (r *Runner) ReleaseLease() {
 // PollOnce runs one long-poll cycle: fetch, append new envelopes to the
 // session inbox file, persist the cursor. Returns how many lines it appended.
 func (r *Runner) PollOnce() (int, error) {
+	// Backpressure before anything else. The session inbox file is a DELIVERY
+	// BUFFER, not the store — the hub keeps every envelope against this peer's
+	// cursor and will hand them over whenever we ask. So when a session stops
+	// consuming, the right thing is to stop taking delivery, not to buffer
+	// without limit: rotation only fires on a fully-consumed file, so an
+	// absent session grows the file forever. `koine` reached 1.9 MB on
+	// 2026-08-01 with 693 KB unread and nobody reading.
+	//
+	// Pausing loses nothing. The cursor does not advance, so every held
+	// envelope is re-offered the moment the backlog drains.
+	if paused, unread := r.backlogged(); paused {
+		if !r.pausedLogged {
+			r.pausedLogged = true
+			r.opts.Logf("inbox backlog %d bytes unread — pausing delivery until the session catches up (nothing is lost; the hub holds it against our cursor)", unread)
+		}
+		time.Sleep(2 * time.Second)
+		return 0, nil
+	} else if r.pausedLogged {
+		r.pausedLogged = false
+		r.opts.Logf("inbox drained — resuming delivery")
+	}
 	q := url.Values{}
 	q.Set("agent", r.agentName)
 	q.Set("since", fmt.Sprint(r.state.Next))
@@ -607,6 +635,32 @@ func (r *Runner) PollOnce() (int, error) {
 	}
 	r.maybeRotate()
 	return n, nil
+}
+
+// backlogged reports whether the consumer is too far behind to take more.
+// The threshold has hysteresis: it engages at the cap and only releases at
+// half, so a session that reads one line does not restart a flood.
+func (r *Runner) backlogged() (bool, int64) {
+	cap := r.opts.BacklogMaxBytes
+	if cap <= 0 {
+		return false, 0
+	}
+	fi, err := os.Stat(r.InboxPath())
+	if err != nil {
+		return false, 0
+	}
+	var off int64
+	if b, err := os.ReadFile(r.offsetPath()); err == nil {
+		_, _ = fmt.Sscan(strings.TrimSpace(string(b)), &off)
+	}
+	unread := fi.Size() - off
+	if unread < 0 {
+		unread = 0
+	}
+	if r.pausedLogged {
+		return unread > cap/2, unread // hysteresis: hold until half drained
+	}
+	return unread >= cap, unread
 }
 
 // Deliver appends each not-yet-seen envelope (with its attached context) as

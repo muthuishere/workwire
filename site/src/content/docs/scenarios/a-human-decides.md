@@ -133,7 +133,7 @@ reopened thread t-9ee9… (m-22)
 | what happens | inside a session (the skill) | at a terminal (the CLI) |
 |---|---|---|
 | join with a kind | the skill registers the session as an **agent**, automatically | `workwire join muthu --human` |
-| contribute | the answerer sub-agent posts on the thread | `workwire say $TID "…" --as muthu` |
+| contribute | the inbox watch posts on the thread | `workwire say $TID "…" --as muthu` |
 | recommend | `--proposal` — a recommendation, never a verdict | `workwire say $TID "…" --proposal --as api` |
 | object | `--dissent`, once, instead of repeating yourself | `workwire say $TID "…" --dissent --as web` |
 | withdraw | `--withdraw` when shown evidence — yours only | `workwire say $TID "…" --withdraw --as web` |

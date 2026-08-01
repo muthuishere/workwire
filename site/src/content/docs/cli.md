@@ -459,6 +459,91 @@ lock.
 Precedence, shared with `listen`: `--agent` > `agentName` in `skill.json` > derived. No
 network call, no hub required.
 
+## `workwire doctor`
+
+Diagnose THIS machine from local state alone. It probes the hub last, and an unreachable hub
+is a finding rather than a failure — which matters, because a hub that is down is the most
+likely thing to be wrong, and `/metrics` cannot answer a question about it.
+
+```bash
+workwire doctor
+```
+
+```
+hub
+  ✓ reachable at http://127.0.0.1:14411 (apiVersion 1)
+listeners on this machine
+    koine                        /Users/m/src/koine
+  ✗ 3 stale lock file(s) with no owner: api, web, old-name
+session inboxes (unread bytes = delivered, not collected)
+  ✗ koine                        692920 unread bytes and NOTHING attached to answer
+    that is the exact shape of 'questions arriving, nobody reading'
+local identity state
+  ✗ workwire.json    was mode 0644 (others could read a file that may hold a secret) — tightened to 0600
+```
+
+It reads: both configs, both hub logs, the run locks and their folder owners, every session
+inbox against its persisted offset, and the answerer marker. A config or credential file
+others can read is **tightened to 0600**, not merely complained about.
+
+## `workwire ui`
+
+A dashboard on loopback: peers with their three reachability states, pending vs delivered per
+peer, provenance, aliases, thread states with dissent counts, storage and live traffic.
+
+```bash
+workwire ui --open          # default port 14412
+```
+
+The page is served by the **CLI, not the hub**. A browser has nowhere safe to keep a bearer
+token — embed one in a page and it is a screenshot or a copied URL away from leaving the
+machine — so the viewer keeps the credential the CLI already resolved, proxies an explicit
+allow-list of read-only GETs, and the page receives no token. It is fully self-contained: no
+CDN, no fonts, nothing leaves the machine to render a table. Works unchanged against a
+remote `hubUrl`.
+
+## `workwire name`
+
+Print the peer name a join would use for a directory — `<repo>-<branch>`, the folder name
+outside a git tree, `<repo>-<commit>` on a detached HEAD.
+
+```bash
+workwire name --dir ~/src/toolnexus     # toolnexus-docs-api-sections-wave4
+```
+
+No network call. Precedence, shared with `listen`: `--agent` > `agentName` in `skill.json` >
+derived. A skill or script that computes a name itself will eventually disagree with the
+listener; this is the one answer.
+
+## `workwire alias`
+
+The names pointing at one identity. A working tree is the identity; a name is a label on it
+(ADR-015), and several labels are normal — peers keep `ask clojure` in their notes long after
+a session started calling itself `toolnexus-cljc`.
+
+```bash
+workwire alias list
+workwire alias rm toolnexus-cljc
+```
+
+Removing a label leaves the identity, its inbox, its cursor and its history untouched, and
+also clears the local credential and folder binding that would otherwise re-create it on the
+next `listen`.
+
+## `workwire forget`
+
+Drop a registration nothing will ever answer for again.
+
+```bash
+workwire forget old-name          # one identity
+workwire forget --stale           # every registration with no live listener
+workwire forget old-name --purge  # also delete this machine's session dir
+```
+
+`DELETE /agents/{name}`. It **refuses a peer that is still live** — that is a running
+session, not a leftover — and it deletes no history: what a peer said stays said, and threads
+keep their words and provenance (ADR-008). What goes away is the ability to address it.
+
 ## `workwire listen`
 
 The singleton dumb waiter. It long-polls the hub inbox and appends inbound envelopes to a
