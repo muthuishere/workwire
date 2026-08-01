@@ -223,6 +223,14 @@ func (r *Registry) ExpandRecipients(to []string, sender string) ([]string, error
 		// label silently becomes a second peer with its own cursor again.
 		if a, ok := r.resolveLocked(n); ok {
 			n = a.Name
+		} else if fromGroup {
+			// A group member nothing is registered under is a ghost — a typo
+			// or a forgotten peer left in the audience. Fanning out to it
+			// black-holes the message: no inbox, no cursor, nobody to read it.
+			// `@all` on 2026-08-01 carried `toolexus-clojure`, a misspelling
+			// of a real peer. An explicitly typed name still passes through
+			// (a peer may be addressed before it first registers).
+			return
 		}
 		// A group never fans out to the peer who addressed it.
 		if n == "" || seen[n] || (fromGroup && n == sender) {

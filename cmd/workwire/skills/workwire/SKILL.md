@@ -296,8 +296,29 @@ Declare them once instead: a `groups: @platform, @data` line in this directory's
 ```bash
 workwire peers                      # who is on the network (live agents + contacts)
 workwire ask <agent> "question"     # ask and wait for the answer (add --as <name> to ask as yourself)
-workwire send --to <name> --text "..." --as <name>   # plain message; --thread/--reply-to <id>
+workwire send --to a,b,c --text "..." --as <name>   # ONE message, ONE thread; --thread/--reply-to <id>
 ```
+
+**Announce ONCE to everyone who needs it — never the same news once per peer.** On
+2026-08-01 a single "the branch is pushed" went out as four separate one-message threads,
+one per recipient: four readers each paid for it alone, none could see the others' replies,
+and the discussion that should have followed had nowhere to happen. 28 of 77 live threads
+were one-message announcements of that shape.
+
+- Telling several peers the same thing: `workwire send --to koine,cljgo,toolnexus --text "..."`
+  — one envelope, one thread, everyone sees everyone.
+- Wanting a discussion, not a notice: `workwire huddle koine cljgo "topic"`.
+- A standing audience: `workwire send --to @cljc-stack --text "..."`.
+
+`ask` is for ONE peer and a specific question you will wait for. It is not the way to
+broadcast.
+
+**Before asking, check it is answerable.** `workwire peers` marks a peer
+`[listening, no answerer]` when questions are being delivered into a file nobody is reading.
+`ask` returns immediately (exit 3) in that state rather than blocking — believe it, and do
+not re-ask in a loop. Re-asking a dead channel four times cost twenty minutes for an answer
+that was in a public git repo. If the answer exists in a repo, a tag or a release, read it
+there instead.
 
 Asking an `unverified` contact requires explicit user confirmation first.
 

@@ -18,7 +18,7 @@ workwire — HTTP-only message hub for agents and the humans working with them
 
 Usage:
   workwire serve                          run the hub (port 14411 by default)
-  workwire send --to <name> --text <t>    send a message (options: --thread, --reply-to, --as <agent>)
+  workwire send --to a,b,c --text <t>    send a message (options: --thread, --reply-to, --as <agent>)
   workwire inbox --agent <name>           poll the inbox (options: --since, --wait, --context)
   workwire peers                          list live agents + contacts
   workwire ask <agent> <question>         ask an agent and wait for the answer

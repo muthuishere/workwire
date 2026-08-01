@@ -70,22 +70,33 @@ func cmdDoctor(cfg config.Config, args []string) error {
 	runDir := filepath.Join(cfg.ConfigDir, "run")
 	entries, _ := os.ReadDir(runDir)
 	held := 0
+	var stale []string
 	for _, e := range entries {
 		if !strings.HasSuffix(e.Name(), ".lock") {
 			continue
 		}
 		name := strings.TrimSuffix(e.Name(), ".lock")
 		owner := readFirstLine(filepath.Join(runDir, name+".owner"))
-		held++
 		if owner == "" {
-			note("%-28s lock present, no owner recorded", name)
-		} else {
-			note("%-28s %s", name, owner)
+			// The owner file is written when the lock is acquired and removed
+			// when it is released, so a lock without one is almost always a
+			// leftover: a killed listener, or a file that outlived its
+			// process. It is inert — the flock died with the process — but it
+			// makes `run/` unreadable as a picture of what is running.
+			stale = append(stale, name)
+			continue
 		}
+		held++
+		note("%-28s %s", name, owner)
 	}
 	if held == 0 {
-		warn("no listen locks — nothing on this machine is listening")
+		warn("no listen locks with an owner — nothing on this machine is listening")
 		note("say `listen with workwire` in a session, or run `workwire listen --dir <repo>`")
+	}
+	if len(stale) > 0 {
+		warn("%d stale lock file(s) with no owner: %s", len(stale), strings.Join(stale, ", "))
+		note("inert (the flock died with its process), but they hide what is really running")
+		note("clear with: rm %s/{%s}.lock", runDir, strings.Join(stale, ","))
 	}
 
 	// --- session inboxes: the "arriving but unread" shape -------------------
@@ -139,7 +150,14 @@ func cmdDoctor(cfg config.Config, args []string) error {
 		mode := fi.Mode().Perm()
 		// A file holding a secret that others can read is a finding, not a note.
 		if (f == "credentials.json" || f == "admin-token" || f == "skill.json" || f == "workwire.json") && mode&0o077 != 0 {
-			warn("%-18s mode %04o — others can read a file that may hold a secret (chmod 600 %s)", f, mode, p)
+			// Tighten it rather than only complaining: these files are ours,
+			// the correct mode is not a matter of taste, and a warning nobody
+			// acts on is how a token ends up world-readable for a month.
+			if err := os.Chmod(p, 0o600); err == nil {
+				warn("%-18s was mode %04o (others could read a file that may hold a secret) — tightened to 0600", f, mode)
+			} else {
+				warn("%-18s mode %04o — others can read a file that may hold a secret (chmod 600 %s)", f, mode, p)
+			}
 			continue
 		}
 		note("%-18s %6d bytes, mode %04o", f, fi.Size(), mode)

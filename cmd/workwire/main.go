@@ -405,13 +405,14 @@ func cmdStatus(cfg config.Config) error {
 
 func cmdSend(cfg config.Config, args []string) error {
 	fs := flag.NewFlagSet("send", flag.ExitOnError)
-	to := fs.String("to", "", "recipient name")
+	var to multiFlag
+	fs.Var(&to, "to", "recipient name; repeat or comma-separate for several — they share ONE thread")
 	text := fs.String("text", "", "message text")
 	thread := fs.String("thread", "", "existing thread id")
 	replyTo := fs.String("reply-to", "", "reply_to id (or \"last\")")
 	as := fs.String("as", "", "act as a registered agent (uses credentials.json)")
 	fs.Parse(args)
-	if *to == "" || *text == "" {
+	if len(to) == 0 || *text == "" {
 		return fmt.Errorf("send requires --to and --text")
 	}
 	c := newClient(cfg)
@@ -420,7 +421,13 @@ func cmdSend(cfg config.Config, args []string) error {
 			return err
 		}
 	}
-	body := map[string]any{"to": *to, "text": *text}
+	// One message to several peers is ONE thread, not one thread each.
+	// Sending the same announcement per-recipient was producing 3-4 parallel
+	// one-message threads for a single piece of news on 2026-08-01: every
+	// reader paid for it separately and none of them could see the others'
+	// replies. The hub has always accepted an array here; the CLI could not
+	// express it.
+	body := map[string]any{"to": []string(to), "text": *text}
 	if *thread != "" {
 		body["thread_id"] = *thread
 	}
@@ -672,4 +679,18 @@ func parseInterspersed(fs *flag.FlagSet, args []string) ([]string, error) {
 		pos = append(pos, args[0])
 		args = args[1:]
 	}
+}
+
+// multiFlag collects a repeatable, comma-splittable string flag.
+type multiFlag []string
+
+func (m *multiFlag) String() string { return strings.Join(*m, ",") }
+
+func (m *multiFlag) Set(v string) error {
+	for _, part := range strings.Split(v, ",") {
+		if p := strings.TrimSpace(part); p != "" {
+			*m = append(*m, p)
+		}
+	}
+	return nil
 }
