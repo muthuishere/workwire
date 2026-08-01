@@ -112,3 +112,33 @@ func countStallNotices(t *testing.T, h *hub, token, agent, thread string) int {
 	}
 	return n
 }
+
+// A stalled thread is "handed back to its initiator" — so it must be possible
+// to accept that hand-back. Before this, the cap refused every send including
+// the closure, and two live threads sat permanently unclosable at 24/24.
+func TestAStalledThreadCanStillBeClosed(t *testing.T) {
+	h := newHub(t, func(c *config.Config) { c.MaxThreadMessages = 3 })
+	a := h.registerHuman("a")
+	b := h.registerHuman("b")
+	_, out := h.req(a, "POST", "/send", map[string]any{"to": []string{"b"}, "text": "topic"})
+	thread, _ := out["thread_id"].(string)
+	h.req(b, "POST", "/send", map[string]any{"thread_id": thread, "text": "two"})
+	h.req(a, "POST", "/send", map[string]any{"thread_id": thread, "text": "three"})
+
+	// Ordinary chatter is refused — that is the cap doing its job.
+	if code, _ := h.req(b, "POST", "/send", map[string]any{"thread_id": thread, "text": "four"}); code != 409 {
+		t.Fatalf("cap must still stop chatter, got %d", code)
+	}
+	// A dissent is a record, not chatter: it must land.
+	if code, o := h.req(b, "POST", "/send", map[string]any{"thread_id": thread, "kind": "dissent", "text": "still object"}); code != 200 {
+		t.Fatalf("dissent on a stalled thread: %d %v", code, o)
+	}
+	// A human may close over an agent dissent; here the dissenter withdraws
+	// first so the initiator can close cleanly.
+	if code, o := h.req(b, "POST", "/send", map[string]any{"thread_id": thread, "kind": "withdraw", "text": "convinced"}); code != 200 {
+		t.Fatalf("withdraw on a stalled thread: %d %v", code, o)
+	}
+	if code, o := h.req(a, "POST", "/send", map[string]any{"thread_id": thread, "kind": "resolved", "text": "accepting the hand-back"}); code != 200 {
+		t.Fatalf("a stalled thread must be closable: %d %v", code, o)
+	}
+}

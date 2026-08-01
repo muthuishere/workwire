@@ -73,8 +73,14 @@ func (s *Server) checkThreadRules(id auth.Identity, ts store.ThreadState, req se
 			ts.ThreadID, ts.ClosedBy)
 	}
 
-	// The round cap is unchanged and still trips first on runaway chatter.
-	if s.cfg.MaxThreadMessages > 0 && ts.Count >= s.cfg.MaxThreadMessages {
+	// The round cap stops CHATTER. It must not stop the three kinds that end a
+	// thread or record its state rather than continue it — otherwise a stalled
+	// thread can never be closed by anyone, which is exactly what happened on
+	// 2026-08-01: two threads sat at 24/24, and every attempt to retire them
+	// was refused by the cap before the closure rules were even reached. A
+	// stall is handed back to its initiator; it must be possible to accept it.
+	endsOrRecords := req.Kind == "resolved" || req.Kind == "dissent" || req.Kind == "withdraw"
+	if s.cfg.MaxThreadMessages > 0 && ts.Count >= s.cfg.MaxThreadMessages && !endsOrRecords {
 		return http.StatusConflict, fmt.Sprintf(
 			"thread %s is stalled: it reached the per-thread cap of %d messages and is handed back to its initiator (%s) with the disagreement intact — raise maxThreadMessages in workwire.json (or WORKWIRE_MAX_THREAD_MESSAGES) to allow more rounds",
 			ts.ThreadID, s.cfg.MaxThreadMessages, ts.Initiator)
