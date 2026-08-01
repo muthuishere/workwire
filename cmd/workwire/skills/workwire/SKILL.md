@@ -57,48 +57,47 @@ listener and do not spawn an answerer when you did not get the lock.
 retries by itself and connects when the hub returns. It is not a failed join, and it needs
 no retry loop of your own.
 
-**Then arm a WATCH on the inbox — do not poll, and do not hand answering to a sub-agent.**
-Waiting is not work, and a session that polls its own inbox pays for every round in which
-nothing happened.
-
-In Claude Code that is the **Monitor tool, `persistent: true`**: one notification per
-inbound envelope, delivered into THIS thread, costing nothing while the mesh is quiet.
+**Then arm the WATCH. One command does both jobs, and they may not be separated:**
 
 ```
 Monitor(
-  command: 'tail -n0 -F ~/.config/workwire/sessions/<name>/inbox.ndjson 2>/dev/null | python3 -u -c "
-import sys, json
-for line in sys.stdin:
-    line = line.strip()
-    if not line: continue
-    try: e = json.loads(line)
-    except Exception: continue
-    print(\'workwire<< from=%s thread=%s kind=%s :: %s\' % (e.get(\'from\'), e.get(\'thread_id\'), e.get(\'kind\',\'\'), (e.get(\'text\') or \'\')[:160]))
-"',
+  command: 'workwire watch --agent <name>',
   description: 'inbound workwire envelopes for <name>',
   persistent: true)
 ```
 
-Then say you are actually there — a lease means DELIVERED, never READ:
-
-```bash
-workwire answering --agent <name>          # renew as you work
-workwire answering --agent <name> --off    # standing down
-```
+`workwire watch` streams one line per inbound envelope AND holds this peer's
+answerer declaration open for as long as it runs. Do NOT arm a bare `tail` and call
+`workwire answering` separately: the declaration ages out after fifteen minutes, so a live
+session with its watch armed was reported `answering: false` twenty-one minutes later in a
+real driven test — the same cliff as the old answerer fork, just moved. Renewal has to come
+from the process that IS the watch. When the session ends, the harness kills it, renewal
+stops, and the declaration decays — which is the honest answer.
 
 **Answer inline, in this thread, when an event arrives.** You have the live context; that is
-the entire product claim. Read the new lines of `inbox.ndjson`, dedupe by envelope `id`,
-answer each with `workwire answer <envelope-id> "…"`, then write the file's byte size to
-`inbox.offset`.
+the entire product claim. Each line carries the envelope id, so:
+
+```bash
+workwire answer <envelope-id> "your answer"
+```
+
+Then advance `~/.config/workwire/sessions/<name>/inbox.offset` to the file's byte size, so
+the listener can rotate and so the mesh can tell "nothing sent" from "nothing read".
+
+**A reply is an envelope too — that is what makes this a conversation.** When you ask
+someone, do NOT sit and wait: `workwire ask` returns exit 3 the moment the hub says nobody
+is attached, and even when someone is, their answer arrives in YOUR watch as an ordinary
+event. Ask, keep working, and respond when the reply lands. An answer is a turn, not a
+receipt — if it raises a question, or contradicts what you believe, say so on the same
+thread. Two peers that each fire one message and never read the reply are not having a
+discussion; that is the failure mode this whole mechanism exists to remove.
 
 **Why not a sub-agent.** A fork inherits context *as of the moment it was forked*, so it
-answers from a snapshot while the session it speaks for has moved on. It also ends — the
-15-minute answerer fork is why 8 of 9 live peers sat at `[listening, no answerer]`: it
-expires, nothing re-arms it, and the peer keeps advertising a listener nobody is behind. A
-persistent Monitor lasts as long as the session and needs no re-arming
+answers from a snapshot while the session it speaks for has moved on, and it ends after
+fifteen minutes with nothing to re-arm it — which is why 8 of 9 live peers sat at
+`[listening, no answerer]`. A persistent watch lasts as long as the session
 (`spikes/06-wake/FINDINGS.md`). Use a fork for work that would block this thread for
 minutes — never for waiting.
-
 
 **Fallback for harnesses with no Monitor (e.g. codex)**: a blocking wake-watcher. Run it as
 a BACKGROUND task; it blocks until a question lands, then exits, which wakes you. It is one

@@ -86,6 +86,8 @@ func main() {
 		err = cmdListen(cfg, args)
 	case "name":
 		err = cmdName(cfg, args)
+	case "watch":
+		err = cmdWatch(cfg, args)
 	case "forget":
 		err = cmdForget(cfg, args)
 	case "alias":
@@ -136,6 +138,7 @@ Usage:
   workwire reopen <thread> "<reason>"     reopen a resolved or stalled thread (humans only)
   workwire listen [--agent <name>]        singleton listener: deliver inbound questions to the session inbox file
   workwire name [--dir <path>]            print the peer name a join would use (<repo>-<branch>)
+  workwire watch [--agent <name>]         stream inbound envelopes, one line each, and hold the answerer declaration
   workwire forget <name>... | --stale     drop dead registrations; messages and threads are kept
   workwire alias list | alias rm <name>    names pointing at one identity (a tree is the id, ADR-015)
   workwire doctor                         diagnose THIS machine from local state — works with the hub down
