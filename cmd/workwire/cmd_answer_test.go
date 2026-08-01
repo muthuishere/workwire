@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/muthuishere/workwire/internal/config"
@@ -74,5 +75,45 @@ func TestAnswerRefusesLast(t *testing.T) {
 	err := cmdAnswer(cfg, []string{"last", "some answer"})
 	if err == nil {
 		t.Fatal("answer must refuse reply_to:\"last\"")
+	}
+}
+
+// A broadcast envelope carries `to` as an ARRAY. Declaring it as a string made
+// every multi-recipient message fail to parse and get skipped silently, so
+// exactly the messages we now encourage — `send --to a,b,c`, huddles, anything
+// addressed to @all — could not be answered at all. The failure mode was the
+// worst kind: `answer` reported "no inbox line with that id" while the line was
+// sitting in the file.
+func TestAnswerFindsABroadcastEnvelope(t *testing.T) {
+	dir := t.TempDir()
+	sess := filepath.Join(dir, "sessions", "api")
+	if err := os.MkdirAll(sess, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	lines := []string{
+		`{"id":"m-one","from":"muthu","to":"api","thread_id":"t-1","text":"one to one"}`,
+		`{"id":"m-many","from":"muthu","to":["api","web","db"],"thread_id":"t-2","text":"one to many"}`,
+	}
+	if err := os.WriteFile(filepath.Join(sess, "inbox.ndjson"),
+		[]byte(strings.Join(lines, "\n")+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, id := range []string{"m-one", "m-many"} {
+		got, owner, err := findQuestion(dir, "", id)
+		if err != nil {
+			t.Fatalf("%s: %v", id, err)
+		}
+		if owner != "api" || got.ID != id {
+			t.Fatalf("%s: got owner=%q id=%q", id, owner, got.ID)
+		}
+	}
+	// And the recipients survive the round trip, so a reply can be addressed.
+	many, _, err := findQuestion(dir, "", "m-many")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(many.To) != 3 {
+		t.Fatalf("broadcast recipients lost: %v", many.To)
 	}
 }

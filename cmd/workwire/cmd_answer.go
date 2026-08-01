@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/muthuishere/workwire/internal/config"
+	"github.com/muthuishere/workwire/internal/envelope"
 )
 
 // cmdAnswer posts an answer stamped with the CONCRETE question envelope id
@@ -57,10 +58,16 @@ func cmdAnswer(cfg config.Config, args []string) error {
 }
 
 type inboxLine struct {
-	ID       string `json:"id"`
-	From     string `json:"from"`
-	To       string `json:"to"`
-	ThreadID string `json:"thread_id"`
+	ID   string `json:"id"`
+	From string `json:"from"`
+	// `to` is a STRING for a one-to-one message and an ARRAY for anything
+	// addressed to several peers. Declaring it as a string made every
+	// multi-recipient envelope fail to parse and get skipped silently, so
+	// exactly the messages we now encourage — `send --to a,b,c`, huddles,
+	// anything to @all — could not be answered at all. envelope.Recipients
+	// already accepts both forms; this file was the one place that did not.
+	To       envelope.Recipients `json:"to"`
+	ThreadID string              `json:"thread_id"`
 }
 
 // findQuestion scans sessions/<agent>/inbox.ndjson (all agents when none is
