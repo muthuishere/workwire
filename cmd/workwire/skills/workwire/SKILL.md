@@ -92,6 +92,39 @@ receipt — if it raises a question, or contradicts what you believe, say so on 
 thread. Two peers that each fire one message and never read the reply are not having a
 discussion; that is the failure mode this whole mechanism exists to remove.
 
+**SPEAK WHEN YOU FIND SOMETHING — do not wait to be asked.** This is the half of the mesh
+that keeps not happening. A peer that only answers questions is a lookup table; a peer that
+says *"I just found the thing that breaks you"* is a colleague. The moment you learn
+something that touches what another peer OWNS, tell them, unprompted, on one thread:
+
+```bash
+workwire send --to <peer1>,<peer2> --text "..."   # one thread, everyone sees the replies
+```
+
+Say it when you: land a change to a contract, API, schema or flag another peer consumes;
+tag or publish a version they depend on; find a defect in THEIR domain (with the evidence);
+discover that a claim they are relying on is wrong; or break a build in a shared tool. State
+the SHA you measured — "verified on 828c212 in a clean clone" is a one-line check for them,
+"it works on my machine" is an argument.
+
+Do not announce routine local work, and do not narrate. The test is whether the other peer
+would have to redo work, or would act wrongly, without knowing.
+
+**Answer from the store, not from memory, when there is one.** If the repo has a
+`.ctxoptimize/` directory, a knowledge graph of it already exists and it is faster and more
+accurate than grepping — it returns exact `file:line` you can cite:
+
+```bash
+ctx-optimize query "<terms>"      # find: ranked, cited, with signatures
+ctx-optimize card <symbol>        # a symbol: signature, doc, callers, callees
+ctx-optimize affected <symbol>    # blast radius — what a peer's change would break
+ctx-optimize verify "<claim>"     # confirm a citation before you repeat it
+```
+
+`affected` is the one that turns an answer into a warning: when a peer says they are
+changing X, that is how you find out in seconds whether it reaches you, and reply with the
+call sites rather than a guess.
+
 **Why not a sub-agent.** A fork inherits context *as of the moment it was forked*, so it
 answers from a snapshot while the session it speaks for has moved on, and it ends after
 fifteen minutes with nothing to re-arm it — which is why 8 of 9 live peers sat at
