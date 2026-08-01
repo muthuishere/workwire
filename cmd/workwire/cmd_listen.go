@@ -29,6 +29,7 @@ func cmdListen(cfg config.Config, args []string) error {
 	dir := fs.String("dir", "", "working tree provenance and persona are derived from (default: cwd)")
 	maxRetries := fs.Int("max-retries", 0, "give up after N consecutive failed hub attempts (default 0 = retry forever)")
 	groups := fs.String("groups", "", "comma-separated audiences to join (default: the `groups:` line in this directory's AGENTS.md / CLAUDE.md)")
+	abandon := fs.Duration("abandon-after", 30*time.Minute, "stand down when the session inbox has unread content nobody has consumed for this long (0 = never; ADR-018)")
 	fs.Parse(args)
 	// Persona comes from --dir (or cwd) — the tree this listener speaks for —
 	// unless the caller stated one; one capped line, never the whole file.
@@ -113,6 +114,13 @@ func cmdListen(cfg config.Config, args []string) error {
 	logf := func(format string, a ...any) {
 		fmt.Fprintf(os.Stderr, "workwire listen: "+format+"\n", a...)
 	}
+	// 0 on the flag means "never stand down" — a deliberate choice for a peer
+	// that is only ever a mailbox. Options reads 0 as "use the default", so
+	// translate it to the disabling value.
+	abandonAfter := *abandon
+	if abandonAfter == 0 {
+		abandonAfter = -1
+	}
 	r, err := listen.New(listen.Options{
 		Agent:      *agent,
 		HubURL:     cfg.HubURL,
@@ -129,6 +137,7 @@ func cmdListen(cfg config.Config, args []string) error {
 		Heartbeat:       time.Duration(cfg.HeartbeatSeconds) * time.Second,
 		InboxPath:       *inbox,
 		MaxRetries:      *maxRetries,
+		AbandonAfter:    abandonAfter,
 		Logf:            logf,
 	})
 	if err != nil {

@@ -73,6 +73,12 @@ type Options struct {
 	// answers, so it must not claim answerability on its own — the evidence is
 	// the session side touching `answerer` or advancing `inbox.offset`.
 	AnswererIdle time.Duration
+	// AbandonAfter is how long the listener tolerates UNREAD content in the
+	// session inbox with nobody consuming it before it stands down and exits
+	// (ADR-018). Negative disables it. The listener is started detached
+	// (`nohup … & disown`), so without this it outlives the session that
+	// started it and the hub advertises a peer that cannot answer.
+	AbandonAfter time.Duration
 }
 
 // State is the persisted poll cursor plus a bounded dedupe window of
@@ -109,6 +115,13 @@ type Runner struct {
 	// answering is the last state declared to the hub, so an unchanged FALSE
 	// costs nothing; a TRUE is re-declared every heartbeat to renew its TTL.
 	answering bool
+	// unreadSince is when the session inbox last went from consumed to
+	// unconsumed with no sign of a consumer. Zero means somebody is reading.
+	unreadSince time.Time
+	// consumerMark is the newest consumer evidence seen so far, so an offset
+	// rewritten to the same value still counts as a consumer being alive.
+	consumerMark time.Time
+	now          func() time.Time // injectable for tests
 }
 
 // condition classifies why the listener is not currently connected. Every one
@@ -224,12 +237,20 @@ func New(opts Options) (*Runner, error) {
 		// minutes; outliving it by much would put the lie back.
 		opts.AnswererIdle = 15 * time.Minute
 	}
+	if opts.AbandonAfter == 0 {
+		// Long enough that a session busy on one task keeps its listener —
+		// `workwire watch` consumes within seconds of delivery regardless of
+		// whether the agent has answered — short enough that a dead session
+		// leaves the wire the same afternoon (ADR-018).
+		opts.AbandonAfter = 30 * time.Minute
+	}
 	r := &Runner{
 		opts:      opts,
 		http:      &http.Client{Timeout: time.Duration(opts.Wait+30) * time.Second},
 		agentName: opts.Agent,
 		sessDir:   filepath.Join(opts.ConfigDir, "sessions", opts.Agent),
 		delivered: map[string]bool{},
+		now:       time.Now,
 	}
 	if err := os.MkdirAll(r.sessDir, 0o755); err != nil {
 		return nil, err
@@ -743,6 +764,58 @@ func (r *Runner) AnswererAttached() bool {
 	return time.Since(newest) <= r.opts.AnswererIdle
 }
 
+// Abandoned reports whether this listener has proof that its delivery is being
+// wasted: unread content in the session inbox that nobody has consumed for
+// AbandonAfter (ADR-018). It returns the unread byte count and how long it has
+// sat there, so the caller can say why it is standing down.
+//
+// The two halves are deliberate. UNREAD>0 is required because a live session
+// with an armed watch and no traffic looks exactly like a dead one — we act
+// only on envelopes we can prove were delivered and not read. And the evidence
+// is CONSUMPTION, not answering: `workwire watch` advances the offset within
+// seconds of delivery whether or not the agent has replied yet, so a session
+// busy for an hour keeps its listener and a session that ended does not.
+func (r *Runner) Abandoned() (bool, int64, time.Duration) {
+	if r.opts.AbandonAfter < 0 {
+		return false, 0, 0
+	}
+	now := r.now()
+	// Consumer evidence is the same evidence AnswererAttached uses, but here we
+	// track its high-water mark rather than a window: a consumer that touched
+	// either file since we last looked resets the clock.
+	newest := time.Time{}
+	for _, p := range []string{r.answererMarkPath(), r.offsetPath()} {
+		if fi, err := os.Stat(p); err == nil && fi.ModTime().After(newest) {
+			newest = fi.ModTime()
+		}
+	}
+	if newest.After(r.consumerMark) {
+		r.consumerMark = newest
+		r.unreadSince = time.Time{}
+	}
+
+	fi, err := os.Stat(r.InboxPath())
+	if err != nil {
+		r.unreadSince = time.Time{}
+		return false, 0, 0
+	}
+	var off int64
+	if b, err := os.ReadFile(r.offsetPath()); err == nil {
+		_, _ = fmt.Sscan(strings.TrimSpace(string(b)), &off)
+	}
+	unread := fi.Size() - off
+	if unread <= 0 {
+		r.unreadSince = time.Time{}
+		return false, 0, 0
+	}
+	if r.unreadSince.IsZero() {
+		r.unreadSince = now
+		return false, unread, 0
+	}
+	waited := now.Sub(r.unreadSince)
+	return waited >= r.opts.AbandonAfter, unread, waited
+}
+
 // declareAnswering tells the hub what this peer honestly knows about its own
 // answerability. Best effort: a hub that refuses it changes nothing else.
 func (r *Runner) declareAnswering() {
@@ -945,6 +1018,16 @@ func (r *Runner) Run(stop <-chan struct{}) error {
 		}
 		if n > 0 {
 			r.opts.Logf("delivered %d envelope(s)", n)
+		}
+		// ADR-018: a listener started with `nohup … & disown` outlives the
+		// session that started it. Unread bytes nobody consumes are the proof,
+		// and standing down is what stops the hub advertising a peer that
+		// cannot answer. Nothing is lost — the hub holds it all against this
+		// peer's cursor until the session rejoins.
+		if abandoned, unread, waited := r.Abandoned(); abandoned {
+			r.opts.Logf("standing down: %d unread byte(s) in %s and nothing has read them for %s — this session looks gone (--abandon-after %s). Nothing is lost; rejoin to collect the backlog.",
+				unread, r.InboxPath(), waited.Round(time.Second), r.opts.AbandonAfter)
+			return nil
 		}
 	}
 }

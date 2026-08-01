@@ -127,7 +127,22 @@ func cmdDoctor(cfg config.Config, args []string) error {
 		if afi, err := os.Stat(answerer); err == nil {
 			attached = fmt.Sprintf(", answerer declared %s ago", time.Since(afi.ModTime()).Round(time.Second))
 		}
+		// How long since ANY consumer touched this session: the offset a watch
+		// advances, or the declaration an answerer writes. Older than the
+		// stand-down window and this is not a busy session — it is a listener
+		// that outlived the session that started it (ADR-018).
+		idle := time.Duration(-1)
+		for _, p := range []string{filepath.Join(sessDir, name, "inbox.offset"), answerer} {
+			if fi, err := os.Stat(p); err == nil {
+				if d := time.Since(fi.ModTime()); idle < 0 || d < idle {
+					idle = d
+				}
+			}
+		}
 		switch {
+		case unread > 0 && attached == "" && idle > 30*time.Minute:
+			warn("%-28s %d unread bytes, nothing read for %s — this looks like a GHOST", name, unread, idle.Round(time.Minute))
+			note("a listener outliving its session; it stands down by itself, or `workwire forget %s`", name)
 		case unread > 0 && attached == "":
 			warn("%-28s %d unread bytes and NOTHING attached to answer", name, unread)
 			note("that is the exact shape of 'questions arriving, nobody reading'")
