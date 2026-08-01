@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/muthuishere/workwire/internal/auth"
 	"github.com/muthuishere/workwire/internal/registry"
@@ -23,6 +24,64 @@ func describeDissent(d store.Dissent) string {
 		out += ": " + d.Text
 	}
 	return out
+}
+
+// abandonWindow is how long an objection must go undefended before it stops
+// blocking. Long on purpose: wrongly discarding a dissent is the failure this
+// whole design exists to prevent, so the bar is "nobody could plausibly still
+// be behind this", not "we would like to close".
+const abandonWindow = time.Hour
+
+// splitAbandoned divides open dissents into those still defensible and those
+// whose author has gone (ADR-017, Dung reinstatement in its narrow form).
+//
+// Every condition here is checkable from the envelope log and the registry —
+// ADR-017's rule that no hub rule may rest on something we cannot verify. The
+// first draft of this used "no live listener" alone and was dangerous: a human
+// at a terminal, or any CLI-only peer, never holds a listen lease, so it would
+// have classified EVERY human objection as abandoned. Three conditions now,
+// all required.
+func (s *Server) splitAbandoned(all []store.Dissent) (live, abandoned []store.Dissent) {
+	_, per := s.store.Snapshot(nil)
+	now := time.Now()
+	for _, d := range all {
+		// 1. A HUMAN's dissent is never abandoned by a timer. A person who
+		//    objects and walks away has still objected; ADR-011 says not even
+		//    another human may close over it, and a clock certainly may not.
+		if d.Kind == registry.KindHuman {
+			live = append(live, d)
+			continue
+		}
+		if a, ok := s.registry.Get(d.Peer); ok && a.IsHuman() {
+			live = append(live, d)
+			continue
+		}
+		// 2. A peer with a live listener is present, whatever else is true.
+		if s.registry.ListenerLive(d.Peer) {
+			live = append(live, d)
+			continue
+		}
+		// 3. Anything authored after the objection means they are still in it.
+		spoke := per[d.Peer].LastSpoke
+		if spoke > d.TS {
+			live = append(live, d)
+			continue
+		}
+		// 4. And it must have been undefended for a long time — measured from
+		//    the dissent itself, so a fresh objection from a peer that has not
+		//    yet taken a lease is never swept away.
+		since := d.TS
+		if spoke > since {
+			since = spoke
+		}
+		t, err := time.Parse(time.RFC3339Nano, since)
+		if err != nil || now.Sub(t) < abandonWindow {
+			live = append(live, d)
+			continue
+		}
+		abandoned = append(abandoned, d)
+	}
+	return live, abandoned
 }
 
 func describeDissents(list []store.Dissent) string {
@@ -113,11 +172,26 @@ func (s *Server) checkThreadRules(id auth.Identity, ts store.ThreadState, req se
 				"only the initiator of thread %s (%s) may send kind \"resolved\" — send kind \"proposal\" to recommend a resolution instead",
 				ts.ThreadID, ts.Initiator)
 		}
-		if len(ts.Dissents) > 0 {
+		// A dissent from a session that has GONE cannot be withdrawn by anyone
+		// — only its author may withdraw it — so the old rule left the thread
+		// unclosable forever. That is a deadlock, not a principle.
+		//
+		// Dung (AIJ 77, 1995) calls the repair reinstatement: an objection its
+		// author can no longer defend stops blocking, while staying on the
+		// record. We take the narrow, checkable form of it — abandonment is
+		// observable from the envelope log (the peer has no live listener and
+		// has authored nothing since it dissented), which satisfies ADR-017's
+		// rule that no hub rule may rest on something we cannot verify.
+		live, abandoned := s.splitAbandoned(ts.Dissents)
+		if len(live) > 0 {
 			return http.StatusConflict, fmt.Sprintf(
 				"thread %s has %d open dissent(s) and an agent can never override a dissent — %s. Two legitimate paths: get the dissent withdrawn (kind \"withdraw\", by the dissenter only), or ask a human peer to decide and close it",
-				ts.ThreadID, len(ts.Dissents), describeDissents(ts.Dissents))
+				ts.ThreadID, len(live), describeDissents(live))
 		}
+		// Nothing live blocks it. Anything abandoned is recorded as overridden
+		// rather than erased: "we closed over a standing objection from a peer
+		// that went away" is a better record than a consensus that never was.
+		*closedOver = append(*closedOver, abandoned...)
 		return 0, ""
 	}
 

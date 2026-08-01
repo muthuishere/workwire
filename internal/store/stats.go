@@ -39,6 +39,13 @@ type AgentStats struct {
 	Pending       int    `json:"pending"`
 	Cursor        int64  `json:"cursor"`
 	LastDelivered string `json:"lastDeliveredAt,omitempty"`
+	// LastSpoke is the last time this peer AUTHORED anything. It is the only
+	// evidence of processing the hub can honestly hold: a heartbeat proves a
+	// process is running, and a lease proves messages are being enqueued, but
+	// neither proves anyone read them. Akka states the rule plainly — knowing a
+	// message was handled requires an ack from the actor, and no transport
+	// mechanism can supply it (ADR-016).
+	LastSpoke string `json:"lastSpokeAt,omitempty"`
 }
 
 // Snapshot is storage stats plus every peer's delivery facts, computed in a
@@ -79,6 +86,13 @@ func (s *Store) Snapshot(cursors map[string]int64) (Stats, map[string]AgentStats
 		}
 		if m.Env.TS > st.NewestTS {
 			st.NewestTS = m.Env.TS
+		}
+		if m.Env.From != "" {
+			a := per[m.Env.From]
+			if m.Env.TS > a.LastSpoke {
+				a.LastSpoke = m.Env.TS
+			}
+			per[m.Env.From] = a
 		}
 		for _, to := range m.Env.To {
 			a := per[to]

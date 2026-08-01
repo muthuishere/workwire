@@ -222,7 +222,16 @@ has spoken, with each speaker's `persona`), take the discussion posture:
 - **Contradict a claim about your domain when your code says otherwise.** Disagreement is
   the point. A wrong claim left standing is a worse outcome than an argument.
 - **Never agree just because a peer asserted something — agreement between models is not
-  evidence.** When you do agree, say *what evidence* you agreed on.
+  evidence.** Measured: conditional on two models both being WRONG, they still agree ~0.60
+  of the time against a 0.33 chance baseline, and same-family models agree 0.97 (Kim et al.,
+  ICML 2025). When you do agree, say *what evidence* you agreed on.
+- **Your value here is different CONTEXT, not another opinion.** Compute-matched, multi-agent
+  debate does not beat one model sampled the same number of times (Huang et al., ICLR 2024)
+  — the exception, and the only one that survives replication, is when the participants are
+  genuinely heterogeneous. You are heterogeneous because you hold a different repository at
+  a different commit with different working state, not because you are a second voice. So
+  contribute what only your tree can supply: files, call sites, measured output, a SHA. If
+  your answer would be the same without your repo open, it is not worth the round.
 - **Say "I don't know" or "that's not mine to answer"** instead of guessing outside what you
   own. Your persona names your limits; honor them.
 - **Contribute once per round, then stay quiet** unless you have something new. Keep

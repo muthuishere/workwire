@@ -75,9 +75,12 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 	storage, per := s.store.Snapshot(s.metrics.cursorSnapshot(names))
 
+	now := time.Now()
 	agents := make([]map[string]any, 0, len(live))
 	for _, a := range live {
 		st := per[a.Name]
+		listener := s.registry.ListenerLive(a.Name)
+		state, idle := presenceOf(listener, st, now)
 		agents = append(agents, map[string]any{
 			"name":    a.Name,
 			"aliases": a.Aliases,
@@ -85,8 +88,15 @@ func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
 			// listener is a DELIVERY fact, answering an ANSWERABILITY fact.
 			// pending>0 with listener=true and answering=false is the exact
 			// shape of "questions are arriving and nobody is reading them".
-			"listener":        s.registry.ListenerLive(a.Name),
-			"answering":       s.registry.AnswererLive(a.Name),
+			"listener":  listener,
+			"answering": s.registry.AnswererLive(a.Name),
+			// ADR-016: a boolean could not tell "nobody is there" from
+			// "someone is there but busy". `state` is graded and `idleSeconds`
+			// is the raw number, so each asker applies its own threshold
+			// instead of inheriting ours (XEP-0012 makes idle a pull).
+			"state":       state,
+			"idleSeconds": idle,
+			"lastSpokeAt": st.LastSpoke,
 			"delivered":       st.Delivered,
 			"pending":         st.Pending,
 			"cursor":          st.Cursor,

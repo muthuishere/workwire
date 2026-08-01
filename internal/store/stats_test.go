@@ -70,8 +70,17 @@ func TestSnapshotReportsEveryPeerInOnePass(t *testing.T) {
 
 	cursors := map[string]int64{"peer0": 0, "peer1": 0, "peer2": 0, "peer3": 0, "quiet": 0}
 	_, per := st.Snapshot(cursors)
-	if len(per) != 5 {
-		t.Fatalf("want 5 rows including the quiet peer, got %d: %v", len(per), per)
+	// Six rows: the four recipients, the peer with no traffic, and the SENDER —
+	// authoring is evidence of processing (ADR-016), so a peer that only ever
+	// speaks still needs a row carrying lastSpokeAt.
+	if len(per) != 6 {
+		t.Fatalf("want 6 rows (4 recipients + quiet peer + sender), got %d: %v", len(per), per)
+	}
+	if per["prober"].LastSpoke == "" {
+		t.Fatal("the sender must carry lastSpokeAt — it is the only evidence of processing the hub holds")
+	}
+	if per["prober"].Delivered != 0 {
+		t.Fatalf("the sender received nothing, got delivered=%d", per["prober"].Delivered)
 	}
 	if per["quiet"].Delivered != 0 || per["quiet"].Pending != 0 {
 		t.Fatalf("a peer with no traffic must report zeroes, got %+v", per["quiet"])

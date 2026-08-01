@@ -178,16 +178,27 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 	// 2026-08-01 recorded 3 sends and ZERO asks: the mesh talks with `send`,
 	// so the warning belonged here too. A recipient whose listener is live but
 	// has nothing attached to answer is receiving into a file nobody reads.
-	var unattended []string
+	// IRC returns a peer's own AWAY text to whoever messages them, at send
+	// time (RFC 2812) — the cheapest useful idea in the whole presence survey.
+	// Silence teaches a sender nothing; "quiet for 12m" tells them whether to
+	// wait or go read the repo themselves (ADR-016).
+	now := time.Now()
+	_, per := s.store.Snapshot(nil)
+	var notes []string
+	var quiet []string
 	for _, rcpt := range env.To {
-		if s.registry.ListenerLive(rcpt) && !s.registry.AnswererLive(rcpt) {
-			unattended = append(unattended, rcpt)
+		state, idle := presenceOf(s.registry.ListenerLive(rcpt), per[rcpt], now)
+		if state == PresenceAttentive {
+			continue
+		}
+		quiet = append(quiet, rcpt)
+		if d := describePresence(rcpt, state, idle); d != "" {
+			notes = append(notes, d)
 		}
 	}
-	if len(unattended) > 0 {
-		out["unattended"] = unattended
-		out["delivery"] = "queued: " + strings.Join(unattended, ", ") +
-			" have a live listener but nothing attached to answer — this is stored and will be read when those sessions come back"
+	if len(quiet) > 0 {
+		out["unattended"] = quiet
+		out["delivery"] = strings.Join(notes, "; ")
 	}
 	// The same announcement retyped once per peer is the most expensive habit
 	// on this mesh (28 of 77 live threads on 2026-08-01). The hub cannot
