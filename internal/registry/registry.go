@@ -106,6 +106,21 @@ type Agent struct {
 	Kind         string       `json:"kind,omitempty"`
 	Origin       *origin.Info `json:"origin,omitempty"`
 	LastSeen     time.Time    `json:"lastSeen"`
+	// Aliases are additional NAMES for this one identity (ADR-015). A tree is
+	// the identity; a name is a label on it. Every alias shares this agent's
+	// inbox, cursor, lease and answerer — which is precisely what three
+	// separate registrations for `toolnexus@cljc` did not.
+	Aliases []string `json:"aliases,omitempty"`
+}
+
+// HasAlias reports whether name is one of this identity's labels.
+func (a *Agent) HasAlias(name string) bool {
+	for _, x := range a.Aliases {
+		if x == name {
+			return true
+		}
+	}
+	return false
 }
 
 // IsHuman reports whether this peer registered as a person (ADR-011 §3).
@@ -209,13 +224,11 @@ type RegisterResult struct {
 	// kind that stands (ADR-011 §3).
 	KindConflict bool
 	KindWas      string
-	// TreeConflict is a 409 of a third shape: this working tree already has a
-	// live peer under a DIFFERENT name (registry-a2a R12). TreeHolder names
-	// it. Two names for one codebase make every question a coin flip — the
-	// asker may address the half with nobody attached, and one session can
-	// appear in a thread as two voices.
-	TreeConflict bool
-	TreeHolder   string
+	// Aliased means the requested name now points at an identity that already
+	// speaks for this working tree (ADR-015). Not an error: the name works,
+	// it just is not a second peer. Canonical names that identity.
+	Aliased   bool
+	Canonical string
 }
 
 // Register implements POST /agents: first registration mints identity,
@@ -235,8 +248,24 @@ func (r *Registry) Register(card Card, presentedSecret string) RegisterResult {
 	// a leftover from a session that has gone is not a rival, it is litter,
 	// and `DELETE /agents/<name>` is how it goes. A card with no cwd matches
 	// nothing.
+	// One tree, one identity — but any number of names may point at it
+	// (ADR-015). A second registration from a tree already on the wire is not
+	// refused and does not create a second peer with its own inbox: the name
+	// becomes an ALIAS of the identity that is already there, so `ask clojure`
+	// and `ask toolnexus-cljc` reach the same session, the same inbox and the
+	// same answerer.
 	if holder := r.treeHolderLocked(card); holder != "" {
-		return RegisterResult{TreeConflict: true, TreeHolder: holder}
+		a := r.agents[holder]
+		if !a.HasAlias(card.Name) {
+			a.Aliases = append(a.Aliases, card.Name)
+			sort.Strings(a.Aliases)
+		}
+		if card.Origin != nil {
+			a.Origin = card.Origin
+		}
+		a.LastSeen = r.now()
+		r.persistLocked()
+		return RegisterResult{Aliased: true, Canonical: holder, Agent: a}
 	}
 	existing, ok := r.agents[card.Name]
 	if ok {
@@ -368,8 +397,57 @@ func (r *Registry) Authenticate(secret string) (*Agent, bool) {
 func (r *Registry) Get(name string) (*Agent, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	a, ok := r.agents[name]
+	a, ok := r.resolveLocked(name)
 	return a, ok
+}
+
+// resolveLocked maps any NAME — canonical or alias — to the one identity
+// behind it (ADR-015). Everything that routes must go through here, or a label
+// becomes a second peer again by accident.
+func (r *Registry) resolveLocked(name string) (*Agent, bool) {
+	if a, ok := r.agents[name]; ok {
+		return a, true
+	}
+	for _, a := range r.agents {
+		if a.HasAlias(name) {
+			return a, true
+		}
+	}
+	return nil, false
+}
+
+// Canonical returns the identity name for any label, or the input unchanged
+// when nothing is registered under it.
+func (r *Registry) Canonical(name string) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if a, ok := r.resolveLocked(name); ok {
+		return a.Name
+	}
+	return name
+}
+
+// DropAlias removes ONE label from an identity. The identity, its history and
+// its cursor are untouched — that is what makes an alias cheap to remove and
+// `forget` a different, heavier act (ADR-015).
+func (r *Registry) DropAlias(name string) (string, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, a := range r.agents {
+		if !a.HasAlias(name) {
+			continue
+		}
+		out := a.Aliases[:0]
+		for _, x := range a.Aliases {
+			if x != name {
+				out = append(out, x)
+			}
+		}
+		a.Aliases = out
+		r.persistLocked()
+		return a.Name, true
+	}
+	return "", false
 }
 
 // Forget removes an agent from the registry entirely: the identity, its

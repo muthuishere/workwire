@@ -57,19 +57,21 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 				"%s is already registered as a %s and a peer's kind cannot change on re-registration — re-register without a \"kind\", or join under a different name",
 				card.Name, res.KindWas),
 		})
-	case res.TreeConflict:
-		// One working tree, one peer (registry-a2a R12). Registering a second
-		// name for a tree that already has a live peer is how `koine` and
-		// `koine-main` both existed on 2026-08-01: every question to that
-		// codebase then became a coin flip between a half with an answerer
-		// and a half without.
-		writeJSON(w, http.StatusConflict, map[string]string{
-			"error": "tree already has a peer",
-			"name":  card.Name,
-			"peer":  res.TreeHolder,
+	case res.Aliased:
+		// One tree, one identity; any number of names may point at it
+		// (ADR-015). The name works from now on — it just resolves to the peer
+		// that already speaks for this working tree, sharing its inbox, cursor
+		// and answerer. That is what `clojure` / `toolnexus-cljc` /
+		// `toolnexus-clojure` needed on 2026-08-01: one voice, three labels.
+		writeJSON(w, http.StatusOK, map[string]any{
+			"agentId": res.Agent.AgentID,
+			"name":    res.Agent.Name,
+			"alias":   card.Name,
+			"aliasOf": res.Agent.Name,
+			"aliases": res.Agent.Aliases,
 			"detail": fmt.Sprintf(
-				"this working tree is already on the wire as %q — one tree, one peer. Use that name, or stop its listener and `workwire forget %s` first if it is a leftover",
-				res.TreeHolder, res.TreeHolder),
+				"%q is an alias of %q — this working tree is one peer with one inbox; both names reach it",
+				card.Name, res.Agent.Name),
 		})
 	default: // conflict — existing registration untouched, no takeover
 		writeJSON(w, http.StatusConflict, map[string]string{
@@ -102,6 +104,7 @@ func (s *Server) handleListAgents(w http.ResponseWriter, r *http.Request) {
 			// itself attached to READ that inbox. A listener outlives the
 			// session that started it, so the two legitimately differ and are
 			// reported separately.
+			"aliases":   a.Aliases,
 			"listener":  s.registry.ListenerLive(a.Name),
 			"answering": s.registry.AnswererLive(a.Name),
 			"lastSeen":  a.LastSeen.UTC().Format(time.RFC3339Nano),
@@ -195,7 +198,7 @@ func (s *Server) handleAsk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	name := r.PathValue("name")
-	env, status, errMsg := s.askCore(id, name, req.Text, req.ThreadID)
+	env, status, errMsg := s.askCore(id, s.registry.Canonical(name), req.Text, req.ThreadID)
 	if errMsg != "" {
 		writeErr(w, status, errMsg)
 		return
@@ -219,7 +222,7 @@ func (s *Server) handleLeaseAcquire(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	name := r.PathValue("name")
+	name := s.registry.Canonical(r.PathValue("name"))
 	if id.Kind == auth.KindAgent && id.Agent.Name != name {
 		writeErr(w, http.StatusForbidden, "forbidden: credential does not correspond to agent")
 		return
@@ -254,7 +257,7 @@ func (s *Server) handleAnswering(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	name := r.PathValue("name")
+	name := s.registry.Canonical(r.PathValue("name"))
 	if id.Kind == auth.KindAgent && id.Agent.Name != name {
 		writeErr(w, http.StatusForbidden, "forbidden: credential does not correspond to agent")
 		return
@@ -286,7 +289,7 @@ func (s *Server) handleForget(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	name := r.PathValue("name")
+	name := s.registry.Canonical(r.PathValue("name"))
 	if id.Kind == auth.KindAgent && id.Agent.Name != name {
 		writeErr(w, http.StatusForbidden, "forbidden: credential does not correspond to agent")
 		return
@@ -298,13 +301,36 @@ func (s *Server) handleForget(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// DELETE /agents/{name}/alias drops ONE label from an identity (ADR-015).
+// Cheap and safe by construction: the identity, its inbox, its cursor and its
+// history are untouched — only a name stops resolving. Removing the canonical
+// name is `DELETE /agents/{name}`, which is a different and heavier act.
+func (s *Server) handleDropAlias(w http.ResponseWriter, r *http.Request) {
+	id, ok := s.identify(w, r)
+	if !ok {
+		return
+	}
+	label := r.PathValue("name")
+	owner := s.registry.Canonical(label)
+	if id.Kind == auth.KindAgent && id.Agent.Name != owner {
+		writeErr(w, http.StatusForbidden, "forbidden: an alias may only be dropped by the identity that holds it")
+		return
+	}
+	canonical, ok := s.registry.DropAlias(label)
+	if !ok {
+		writeErr(w, http.StatusNotFound, "no such alias — a canonical name is removed with DELETE /agents/{name}")
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"dropped": label, "identity": canonical})
+}
+
 // DELETE /agents/{name}/listen-lease with the current leaseId → 204.
 func (s *Server) handleLeaseRelease(w http.ResponseWriter, r *http.Request) {
 	id, ok := s.identify(w, r)
 	if !ok {
 		return
 	}
-	name := r.PathValue("name")
+	name := s.registry.Canonical(r.PathValue("name"))
 	if id.Kind == auth.KindAgent && id.Agent.Name != name {
 		writeErr(w, http.StatusForbidden, "forbidden: credential does not correspond to agent")
 		return

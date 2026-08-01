@@ -64,13 +64,7 @@ func cmdForget(cfg config.Config, args []string) error {
 		// re-register the moment anything runs `listen` under the old name.
 		// That is why `koine`, `clojure` and two `toolnexus` aliases kept
 		// reappearing after being forgotten on 2026-08-01.
-		local := []string{}
-		if err := listen.DropCredential(cfg.ConfigDir, cfg.HubURL, name); err == nil {
-			local = append(local, "credential")
-		}
-		if n := dropFolderBindings(cfg, name); n > 0 {
-			local = append(local, fmt.Sprintf("%d folder binding(s)", n))
-		}
+		local := dropLocalName(cfg, name)
 		// The session directory is this machine's copy of that peer's inbox and
 		// cursor — evidence, and small. Deleting it is opt-in.
 		sess := filepath.Join(cfg.ConfigDir, "sessions", name)
@@ -89,6 +83,21 @@ func cmdForget(cfg config.Config, args []string) error {
 		fmt.Printf("forgot %s — %s. Its messages and threads are untouched.\n", name, detail)
 	}
 	return nil
+}
+
+// dropLocalName clears the state on THIS machine that would re-create a name
+// on the next `listen`: the hub-issued credential and any folder bound to it.
+// Dropping only the hub's row is theatre — that is why `koine`, `clojure` and
+// two `toolnexus` labels kept coming back after being forgotten.
+func dropLocalName(cfg config.Config, name string) []string {
+	var cleared []string
+	if err := listen.DropCredential(cfg.ConfigDir, cfg.HubURL, name); err == nil {
+		cleared = append(cleared, "credential")
+	}
+	if n := dropFolderBindings(cfg, name); n > 0 {
+		cleared = append(cleared, fmt.Sprintf("%d folder binding(s)", n))
+	}
+	return cleared
 }
 
 // stalePeers lists every registration the hub still serves that has no live

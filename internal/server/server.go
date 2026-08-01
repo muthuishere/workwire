@@ -69,6 +69,7 @@ func New(cfg config.Config, st *store.Store, reg *registry.Registry, dir *contac
 	mux.HandleFunc("GET /agents", s.handleListAgents)
 	mux.HandleFunc("POST /agents", s.handleRegister)
 	mux.HandleFunc("DELETE /agents/{name}", s.handleForget)
+	mux.HandleFunc("DELETE /agents/{name}/alias", s.handleDropAlias)
 	mux.HandleFunc("GET /agents/{name}/card", s.handleCard)
 	mux.HandleFunc("POST /agents/{name}/ask", s.handleAsk)
 	mux.HandleFunc("POST /agents/{name}/rpc", s.handleRPC)
@@ -346,7 +347,8 @@ func (s *Server) handleInbox(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	agent := q.Get("agent")
+	// An alias reads the identity's inbox, not an inbox of its own (ADR-015).
+	agent := s.registry.Canonical(q.Get("agent"))
 	if agent == "" {
 		writeErr(w, http.StatusBadRequest, "agent parameter is required")
 		return

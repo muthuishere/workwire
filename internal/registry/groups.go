@@ -218,8 +218,13 @@ func (r *Registry) ExpandRecipients(to []string, sender string) ([]string, error
 	var out []string
 	seen := map[string]bool{}
 	add := func(n string, fromGroup bool) {
-		// A group never fans out to the peer who addressed it; an explicitly
-		// typed name is left exactly as the sender typed it.
+		// Every recipient resolves to its IDENTITY before delivery (ADR-015):
+		// an alias must land in the same inbox as the canonical name, or a
+		// label silently becomes a second peer with its own cursor again.
+		if a, ok := r.resolveLocked(n); ok {
+			n = a.Name
+		}
+		// A group never fans out to the peer who addressed it.
 		if n == "" || seen[n] || (fromGroup && n == sender) {
 			return
 		}

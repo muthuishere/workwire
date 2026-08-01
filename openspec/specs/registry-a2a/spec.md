@@ -275,43 +275,50 @@ meaning and its consumers.
 - WHEN a peer holding a different agent's credential POSTs `/agents/api/answering`
 - THEN the hub responds `403`, and `404` for an unknown agent
 
-### R12: The system SHALL refuse a SECOND live registration for a working tree it already has, using the provenance it already stores
+### R12: The system SHALL treat a WORKING TREE as the identity and a NAME as a label on it — one identity, any number of names (ADR-015)
 
-A peer name is an identity claim about a codebase. Two names for one working tree — `koine`
-and `koine-main`, same repo, same branch, same cwd — make every question a coin flip:
-whichever half the asker addresses may be the half with nobody attached, and a thread can
-carry two "voices" that are one session. This happened on the live mesh on 2026-08-01 and
-is reproduced in `spikes/04-reachability/` F3.
+A peer name is how people address a codebase, and people accumulate names: an old one in
+their notes, a new one the session derived, a third from a worktree path. On 2026-08-01
+`muthuishere/toolnexus@cljc` was on the wire three times — `clojure`, `toolnexus-cljc`,
+`toolnexus-clojure`, all at `2f11e8a` — and `koine` twice. Several names was never the
+harm. Several *identities* was: three inboxes, three cursors, three answerers, and half the
+questions delivered where nobody was reading.
 
-The hub already holds what it needs on every card: `origin.cwd`, `origin.repo`,
-`origin.branch`. When a registration presents an origin whose `cwd` matches that of a
-DIFFERENT live peer (within TTL), the hub SHALL respond `409` naming the peer that already
-speaks for that tree, and SHALL register nothing. A registration for the same NAME with the
-same origin remains ordinary re-registration (a restart), unaffected.
+A registration whose provenance matches a LIVE peer's tree SHALL NOT create a second
+identity and SHALL NOT be refused. It SHALL register that name as an **alias** of the
+existing identity and return that identity's `agentId` and canonical name. The tree is
+identified by `repo@branch` when provenance carries both, and by `origin.cwd` otherwise; a
+card with no provenance matches nothing and blocks nothing. A registration for the same
+name from the same tree remains ordinary re-registration.
 
-The check SHALL apply only to live peers: a stale registration for a tree whose session has
-gone is not a conflict, it is a leftover, and `DELETE /agents/<name>` is how it goes away.
-An empty `origin.cwd` (a peer registering without provenance) SHALL NOT be matched against
-anything.
+**Every name SHALL resolve to its identity before anything routes.** Addressing, group
+expansion, `ask`, inbox reads, lease acquisition and answerer declaration all operate on the
+resolved identity, so an alias shares one inbox, one cursor and one answerer. An envelope's
+`from` SHALL carry the canonical name, so a thread can never show one session arguing with
+itself under two labels.
 
-#### Scenario: one tree, two names
-- GIVEN `koine` is live with `origin.cwd = /src/koine`
-- WHEN a registration arrives for `koine-main` with the same `origin.cwd`
-- THEN the hub responds `409` naming `koine`, and `koine-main` does not exist
+`DELETE /agents/<name>/alias` SHALL drop ONE label, leaving the identity, its history and
+its cursor untouched, and SHALL be permitted only to that identity (or admin). Dropping the
+canonical name is `DELETE /agents/<name>` — a different and heavier act. `GET /agents` SHALL
+carry each identity's `aliases`.
 
-#### Scenario: the same peer restarting is not a conflict
-- GIVEN `koine` is live with `origin.cwd = /src/koine`
-- WHEN `koine` re-registers with the same credential and the same cwd
-- THEN it succeeds and keeps its identity
+#### Scenario: one tree, three names, one inbox
+- GIVEN `clojure` is live for `muthuishere/toolnexus@cljc`
+- WHEN registrations arrive for `toolnexus-cljc` and `toolnexus-clojure` with the same provenance
+- THEN both succeed as aliases of `clojure`, `GET /agents` lists ONE identity, and a message addressed to any of the three names appears exactly once in `clojure`'s inbox
 
-#### Scenario: a leftover is not a conflict
-- GIVEN `koine` registered from `/src/koine` and has been silent past TTL
-- WHEN `koine-main` registers from `/src/koine`
-- THEN it is accepted — a dead registration blocks nothing
+#### Scenario: a different branch is a different peer
+- WHEN a peer registers for `muthuishere/toolnexus@main` while `toolnexus-cljc` is live
+- THEN it is created as its own identity, not an alias
 
-#### Scenario: no provenance, no matching
-- WHEN two peers register with no `origin.cwd`
-- THEN neither blocks the other
+#### Scenario: dropping a label keeps the identity
+- GIVEN `clojure` has alias `toolnexus-cljc`
+- WHEN `DELETE /agents/toolnexus-cljc/alias` runs
+- THEN the alias stops resolving, and `clojure` keeps its inbox, cursor, groups and history
+
+#### Scenario: an alias belongs to its identity alone
+- WHEN another agent's credential attempts to drop the alias
+- THEN the hub responds `403` and the alias stands
 
 ### R13: The hub SHALL expose its own operational state — counters, per-agent delivery facts, and a structured event log
 
