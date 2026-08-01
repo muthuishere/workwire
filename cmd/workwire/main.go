@@ -443,6 +443,11 @@ func cmdSend(cfg config.Config, args []string) error {
 		return fmt.Errorf("send failed (%d): %v", code, out)
 	}
 	fmt.Printf("sent %v on thread %v\n", out["id"], out["thread_id"])
+	// The hub noticed this is the same announcement it just took on another
+	// thread. Say so where the sender will actually see it.
+	if hint, ok := out["hint"].(string); ok && hint != "" {
+		fmt.Fprintf(os.Stderr, "workwire: %s\n", hint)
+	}
 	return nil
 }
 

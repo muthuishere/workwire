@@ -3,6 +3,8 @@ package store
 import (
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 )
 
 // Stats is what the hub can say about its own storage without an
@@ -113,4 +115,35 @@ func (s *Store) Snapshot(cursors map[string]int64) (Stats, map[string]AgentStats
 func (s *Store) Stats() Stats {
 	st, _ := s.Snapshot(nil)
 	return st
+}
+
+// SameTextRecently finds a message this sender already sent, with the SAME
+// text, to a DIFFERENT set of recipients, inside the window — and returns the
+// thread it landed on.
+//
+// This is the fan-out smell made detectable: one announcement retyped once per
+// peer. On 2026-08-01, 28 of 77 live threads were one-message announcements of
+// exactly this shape — four separate threads for a single "the branch is
+// pushed", so four readers each paid for it alone and none could see the
+// others' replies. The hub cannot forbid it (a message to one peer is a
+// perfectly ordinary thing) but it can notice, and say so.
+func (s *Store) SameTextRecently(from, text string, within time.Duration, exclude string) (threadID string, found bool) {
+	if strings.TrimSpace(text) == "" {
+		return "", false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	cutoff := time.Now().Add(-within).UTC().Format(time.RFC3339Nano)
+	// Newest first: the most recent duplicate is the thread worth joining.
+	for i := len(s.msgs) - 1; i >= 0; i-- {
+		m := s.msgs[i]
+		if m.Env.TS < cutoff {
+			break
+		}
+		if m.Env.From != from || m.Env.ThreadID == exclude || m.Env.Text != text {
+			continue
+		}
+		return m.Env.ThreadID, true
+	}
+	return "", false
 }

@@ -171,9 +171,20 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.metrics.sends.Add(1)
-	writeJSON(w, http.StatusOK, map[string]string{
-		"id": env.ID, "thread_id": env.ThreadID, "ts": env.TS,
-	})
+	out := map[string]any{"id": env.ID, "thread_id": env.ThreadID, "ts": env.TS}
+	// The same announcement retyped once per peer is the most expensive habit
+	// on this mesh (28 of 77 live threads on 2026-08-01). The hub cannot
+	// forbid it — a message to one peer is ordinary — but it can refuse to let
+	// it pass unremarked, and name the thread the sender should have used.
+	if req.ThreadID == "" {
+		if prior, dup := s.store.SameTextRecently(env.From, env.Text, 5*time.Minute, env.ThreadID); dup {
+			out["duplicate_of_thread"] = prior
+			out["hint"] = "you sent this same text on thread " + prior +
+				" moments ago — one announcement belongs on ONE thread: send once with --to a,b,c (or an @group), " +
+				"or add --thread " + prior + ". Separate threads mean each reader pays for it alone and none of them see the others' replies."
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
 }
 
 // ingest builds, validates and stores an envelope. `from` is stamped
