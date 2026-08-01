@@ -6,8 +6,10 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/muthuishere/workwire/internal/config"
+	"github.com/muthuishere/workwire/internal/listen"
 )
 
 // cmdForget drops a peer registration that nothing will ever answer for again
@@ -23,15 +25,28 @@ import (
 // joins as `api-main`.
 func cmdForget(cfg config.Config, args []string) error {
 	fs := flag.NewFlagSet("forget", flag.ExitOnError)
+	stale := fs.Bool("stale", false, "forget EVERY registration with no live listener (leftovers, renames, dead aliases)")
+	purge := fs.Bool("purge", false, "also delete this machine's session directory for the peer (inbox + cursor). Evidence is kept without it.")
 	rest, err := parseInterspersed(fs, args)
 	if err != nil {
 		return err
 	}
+	c := newClient(cfg)
+	if *stale {
+		names, err := stalePeers(c)
+		if err != nil {
+			return err
+		}
+		if len(names) == 0 {
+			fmt.Println("nothing stale: every registration has a live listener")
+			return nil
+		}
+		rest = append(rest, names...)
+	}
 	if len(rest) == 0 {
-		return fmt.Errorf("usage: workwire forget <name> [<name>...]")
+		return fmt.Errorf("usage: workwire forget <name> [<name>...] | workwire forget --stale")
 	}
 
-	c := newClient(cfg)
 	for _, name := range rest {
 		// Refuse to unname a peer that is still live: that is a running
 		// session, not a leftover, and dropping it would strand its listener
@@ -44,12 +59,59 @@ func cmdForget(cfg config.Config, args []string) error {
 			fmt.Fprintf(os.Stderr, "workwire: %s: %v\n", name, err)
 			continue
 		}
-		// The local session directory is this machine's copy of that peer's
-		// inbox and cursor. Keep it: it is evidence, and it is small.
-		fmt.Printf("forgot %s (its messages and threads are untouched; %s kept)\n",
-			name, filepath.Join(cfg.ConfigDir, "sessions", name))
+		// Dropping the hub registration alone is theatre: the credential and
+		// the folder binding on THIS machine are what let the alias
+		// re-register the moment anything runs `listen` under the old name.
+		// That is why `koine`, `clojure` and two `toolnexus` aliases kept
+		// reappearing after being forgotten on 2026-08-01.
+		local := []string{}
+		if err := listen.DropCredential(cfg.ConfigDir, cfg.HubURL, name); err == nil {
+			local = append(local, "credential")
+		}
+		if n := dropFolderBindings(cfg, name); n > 0 {
+			local = append(local, fmt.Sprintf("%d folder binding(s)", n))
+		}
+		// The session directory is this machine's copy of that peer's inbox and
+		// cursor — evidence, and small. Deleting it is opt-in.
+		sess := filepath.Join(cfg.ConfigDir, "sessions", name)
+		if *purge {
+			if err := os.RemoveAll(sess); err == nil {
+				local = append(local, "session dir")
+			}
+		}
+		detail := "nothing local to clear"
+		if len(local) > 0 {
+			detail = "cleared " + strings.Join(local, ", ")
+		}
+		if !*purge {
+			detail += fmt.Sprintf("; kept %s", sess)
+		}
+		fmt.Printf("forgot %s — %s. Its messages and threads are untouched.\n", name, detail)
 	}
 	return nil
+}
+
+// stalePeers lists every registration the hub still serves that has no live
+// listener — renamed peers, dead aliases, sessions that never came back. These
+// are exactly the names that make `ask` wait on nobody and make one codebase
+// answer under three identities.
+func stalePeers(c *client) ([]string, error) {
+	var out struct {
+		Agents []struct {
+			Name     string `json:"name"`
+			Listener bool   `json:"listener"`
+		} `json:"agents"`
+	}
+	if _, err := c.do("GET", "/agents", nil, &out); err != nil {
+		return nil, err
+	}
+	var names []string
+	for _, a := range out.Agents {
+		if !a.Listener {
+			names = append(names, a.Name)
+		}
+	}
+	return names, nil
 }
 
 // peerIsLive reports whether the hub still sees a listener or an answerer for

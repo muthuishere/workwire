@@ -209,6 +209,13 @@ type RegisterResult struct {
 	// kind that stands (ADR-011 §3).
 	KindConflict bool
 	KindWas      string
+	// TreeConflict is a 409 of a third shape: this working tree already has a
+	// live peer under a DIFFERENT name (registry-a2a R12). TreeHolder names
+	// it. Two names for one codebase make every question a coin flip — the
+	// asker may address the half with nobody attached, and one session can
+	// appear in a thread as two voices.
+	TreeConflict bool
+	TreeHolder   string
 }
 
 // Register implements POST /agents: first registration mints identity,
@@ -221,6 +228,15 @@ func (r *Registry) Register(card Card, presentedSecret string) RegisterResult {
 	// the audience and `platform` the peer cannot both exist.
 	if r.nameCollidesLocked(card.Name) {
 		return RegisterResult{Conflict: true, Suggestion: r.suggestLocked(card.Name)}
+	}
+	// One working tree, one peer. The hub already stamps provenance on every
+	// card, so it can see what happened to `koine`/`koine-main` on
+	// 2026-08-01 and refuse it (registry-a2a R12). Only LIVE peers conflict:
+	// a leftover from a session that has gone is not a rival, it is litter,
+	// and `DELETE /agents/<name>` is how it goes. A card with no cwd matches
+	// nothing.
+	if holder := r.treeHolderLocked(card); holder != "" {
+		return RegisterResult{TreeConflict: true, TreeHolder: holder}
 	}
 	existing, ok := r.agents[card.Name]
 	if ok {
@@ -277,6 +293,52 @@ func (r *Registry) Register(card Card, presentedSecret string) RegisterResult {
 	r.persistGroupsLocked()
 	r.persistLocked()
 	return RegisterResult{Created: true, Agent: a, Secret: secret}
+}
+
+// treeHolderLocked names a LIVE peer, other than card.Name, already speaking
+// for card's working tree. Empty when there is none.
+// The tree is identified by repo@branch when provenance has them, and by cwd
+// otherwise. repo@branch is the stronger key and the one that matters: on
+// 2026-08-01 `muthuishere/toolnexus@cljc` was on the wire THREE times — as
+// `clojure`, `toolnexus-cljc` and `toolnexus-clojure`, all at 2f11e8a — from
+// paths that differed only by which worktree the session happened to open.
+// Peers then sent to whichever alias they had seen last. Same repo, same
+// branch, same commit is one voice, whatever the directory is called.
+func (r *Registry) treeHolderLocked(card Card) string {
+	if card.Origin == nil {
+		return ""
+	}
+	key := treeKey(card.Origin)
+	if key == "" {
+		return ""
+	}
+	now := r.now()
+	for name, a := range r.agents {
+		if name == card.Name || a.Origin == nil {
+			continue
+		}
+		if treeKey(a.Origin) != key {
+			continue
+		}
+		if now.Sub(a.LastSeen) > r.ttl {
+			continue // a dead registration blocks nothing
+		}
+		return name
+	}
+	return ""
+}
+
+// treeKey is the identity of a working tree: `repo@branch` when both are
+// known, else the absolute cwd, else nothing (a peer with no provenance
+// matches nobody and blocks nobody).
+func treeKey(o *origin.Info) string {
+	if o == nil {
+		return ""
+	}
+	if o.Repo != "" && o.Branch != "" {
+		return o.Repo + "@" + o.Branch
+	}
+	return o.Cwd
 }
 
 func (r *Registry) suggestLocked(name string) string {

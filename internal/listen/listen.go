@@ -1010,3 +1010,25 @@ func SaveCredential(configDir, hubURL, name string, c Credential) error {
 	cf.Hubs[key][name] = c
 	return writeCredentialsFile(configDir, cf)
 }
+
+// DropCredential removes one agent's stored credential for a hub. Without
+// this, "forgetting" a peer on the hub is temporary theatre: the local
+// credential and the session dir are what let a stale alias re-register the
+// moment anything runs `listen` with the old name — which is exactly how
+// `koine`, `clojure` and two `toolnexus` aliases kept coming back on
+// 2026-08-01.
+func DropCredential(configDir, hubURL, name string) error {
+	cf, err := readCredentialsFile(configDir, hubURL)
+	if err != nil {
+		return err
+	}
+	key := hubaddr.Key(hubURL)
+	if cf.Hubs[key] == nil {
+		return nil
+	}
+	if _, ok := cf.Hubs[key][name]; !ok {
+		return nil
+	}
+	delete(cf.Hubs[key], name)
+	return writeCredentialsFile(configDir, cf)
+}

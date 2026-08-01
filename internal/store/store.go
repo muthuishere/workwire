@@ -700,7 +700,16 @@ func (s *Store) threadStateLocked(id string, cap int) (ThreadState, bool) {
 	if !ts.Resolved {
 		ts.Dissents = collect()
 	}
-	ts.Count = len(list) - capBase
+	// The hub's own stall notice is not a round: counting it would push the
+	// thread one past its cap and make the number the participants see
+	// disagree with the number the cap enforces (hub-core R26).
+	system := 0
+	for _, st := range list[min(capBase, len(list)):] {
+		if st.Env.Kind == "stalled" && st.Env.From == "workwire-hub" {
+			system++
+		}
+	}
+	ts.Count = len(list) - capBase - system
 	switch {
 	case ts.Resolved:
 		ts.State = "resolved"

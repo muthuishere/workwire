@@ -6,6 +6,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -129,7 +130,7 @@ Usage:
   workwire reopen <thread> "<reason>"     reopen a resolved or stalled thread (humans only)
   workwire listen [--agent <name>]        singleton listener: deliver inbound questions to the session inbox file
   workwire name [--dir <path>]            print the peer name a join would use (<repo>-<branch>)
-  workwire forget <name>...               drop a dead registration (a renamed peer); messages and threads are kept
+  workwire forget <name>... | --stale     drop dead registrations (renames, aliases); messages and threads are kept
   workwire answer <id> <text>             answer a delivered question by its concrete envelope id
   workwire answering --agent <name>       declare an answerer attached to this peer (--off to stand down)
   workwire install --service --skills     recommended setup: hub as a background service + the agent skill
@@ -158,7 +159,17 @@ every key. Client config: ~/.config/workwire/skill.json (0600)
 `)
 }
 
+// errNoAnswerer ends `ask` with a distinct, scriptable status: the question
+// was accepted and delivered, but nothing is attached to answer it. That is
+// not a transport failure and must not be confused with one, so it exits 3 and
+// prints nothing further — the caller has already been told exactly what
+// happened (hub-core R27).
+var errNoAnswerer = errors.New("no answerer attached")
+
 func fatal(err error) {
+	if errors.Is(err, errNoAnswerer) {
+		os.Exit(3)
+	}
 	fmt.Fprintln(os.Stderr, "workwire:", err)
 	os.Exit(1)
 }
@@ -522,7 +533,8 @@ func cmdPeers(cfg config.Config) error {
 func cmdAsk(cfg config.Config, args []string) error {
 	fs := flag.NewFlagSet("ask", flag.ExitOnError)
 	as := fs.String("as", "", "act as a registered agent")
-	timeout := fs.Duration("timeout", 5*time.Minute, "overall wait for the answer")
+	timeout := fs.Duration("timeout", 5*time.Minute, "overall wait for the answer (an UPPER bound)")
+	anyway := fs.Bool("wait-anyway", false, "wait even when the hub says nothing is attached to answer")
 	rest, err := parseInterspersed(fs, args)
 	if err != nil {
 		return err
@@ -567,6 +579,17 @@ func cmdAsk(cfg config.Config, args []string) error {
 			"warning: %s is listening but nothing is attached to answer%s — the question is delivered and will be answered when its session next picks it up\n",
 			target, lastSeenPhrase(out.LastSeen))
 	}
+	// hub-core R27. Waiting on a peer with nothing attached is waiting on
+	// nobody: the answer cannot arrive until that session comes back, which is
+	// minutes or hours, not seconds. The question IS stored and delivered, so
+	// returning now loses nothing. Four rounds of blocking on this cost a peer
+	// twenty minutes on 2026-08-01 for an answer that was in a public repo.
+	if !out.Answering && !*anyway {
+		fmt.Fprintf(os.Stderr,
+			"not waiting: nothing is attached to answer for %s — the question is delivered (thread %s). Read it later with `workwire threads`, or pass --wait-anyway.\n",
+			target, out.ThreadID)
+		return errNoAnswerer
+	}
 	fmt.Fprintf(os.Stderr, "asked %s (thread %s); waiting for the answer...\n", target, out.ThreadID)
 	deadline := time.Now().Add(*timeout)
 	for time.Now().Before(deadline) {
@@ -579,8 +602,18 @@ func cmdAsk(cfg config.Config, args []string) error {
 				Kind    string `json:"kind"`
 			} `json:"messages"`
 		}
+		// The per-poll wait may never outlast the caller's deadline: checking
+		// the deadline and THEN blocking a full window is how a 30s timeout
+		// became 40s (spikes/04-reachability F1).
+		remain := int(time.Until(deadline).Seconds())
+		if remain <= 0 {
+			break
+		}
+		if remain > cfg.WaitDefault {
+			remain = cfg.WaitDefault
+		}
 		q := url.Values{}
-		q.Set("wait", fmt.Sprint(cfg.WaitDefault))
+		q.Set("wait", fmt.Sprint(remain))
 		q.Set("answer_to", out.MessageID)
 		code, err := c.do("GET", "/threads/"+url.PathEscape(out.ThreadID)+"?"+q.Encode(), nil, &tr)
 		if err != nil {

@@ -445,3 +445,65 @@ identical behavior on a laptop, in a `FROM scratch` container, or behind a rever
 #### Scenario: no peer can add another peer
 - WHEN `web`, or the admin token, calls join or leave on `@payments` with a body naming `dba`
 - THEN the hub responds `403` and the membership of `@payments` is unchanged — a silent add would let anyone force-wake anyone else's session
+
+### R26: A thread that STALLS SHALL notify its initiator and its members, and `--timeout` on a wait SHALL be an upper bound
+
+Two failures, one root: the system knows something the participants do not.
+
+**The stall is silent.** At `maxThreadMessages` a send is refused `409` with a clear reason
+and a non-zero exit — nothing is lost in transit (`spikes/04-reachability/` F4 measured
+this: every over-cap send was refused, none was dropped). But the initiator, to whom the
+error text says the thread is "handed back", receives nothing; other members receive
+nothing and keep composing into a thread that will refuse them. Two peers independently
+concluded their messages had been "lost" on 2026-08-01, which makes this a design defect
+rather than operator error.
+
+When a thread first reaches the cap, the hub SHALL post ONE system envelope
+(`kind:"stalled"`, server-generated, `from` the hub) onto that thread, delivered to the
+initiator and every member, naming the thread, the cap, and what may still be done (a human
+may `reopen`; anyone may start a new thread). It SHALL be posted exactly once per stall
+transition, SHALL NOT itself count toward the cap, and SHALL NOT be emitted again for
+subsequent refused sends.
+
+**A wait may overshoot its own deadline.** A `--timeout 30s` ask ran 40 s, because the wait
+loop checks its deadline before issuing a poll that can itself block for a full `wait`
+window. Any client-side wait SHALL treat its timeout as an upper bound: the per-poll `wait`
+SHALL be clamped to the time remaining, and the call SHALL return no later than the
+deadline.
+
+#### Scenario: the initiator learns the thread stalled
+- GIVEN a thread at `maxThreadMessages - 1` messages with initiator `a` and members `b`, `c`
+- WHEN `b` sends the message that reaches the cap, and then sends another
+- THEN the second send is refused `409`
+- AND `a`, `b` and `c` have each received exactly one `kind:"stalled"` envelope for that thread
+
+#### Scenario: the notice does not itself trip the cap
+- WHEN the stall envelope is posted
+- THEN the thread's reported `count` is unchanged and no further stall envelope is emitted for later refused sends
+
+#### Scenario: a timeout is an upper bound
+- GIVEN a peer that will never answer
+- WHEN `workwire ask <peer> "…" --timeout 30s` runs
+- THEN it returns within 30 s, not one poll window later
+
+### R27: `ask` SHALL NOT block on a peer with nothing attached to answer
+
+The hub already reports `answering` on the ask response (registry-a2a R11). Blocking anyway
+converts a known-unanswerable question into a five-minute wait; in the field this cost four
+rounds for one answer that was available in a public repo.
+
+When the ask response reports `answering:false`, the CLI SHALL deliver the question (it is
+durable and will be answered when that session returns), report the thread id and the
+reason in one line, and return immediately with a distinct non-zero exit status, rather than
+waiting. `--wait-anyway` SHALL restore blocking for a caller that knowingly wants it. When
+`answering` is true the behaviour is unchanged.
+
+#### Scenario: asking a listening peer with no answerer
+- GIVEN a peer whose lease is live and whose `answering` is false
+- WHEN `workwire ask` runs without `--wait-anyway`
+- THEN the question is stored and delivered, the command returns immediately with a non-zero status distinct from a transport failure, and it names the thread to read later
+
+#### Scenario: an attached answerer is unaffected
+- GIVEN a peer reporting `answering:true`
+- WHEN `workwire ask` runs
+- THEN it waits for the answer exactly as before

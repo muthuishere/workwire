@@ -75,6 +75,25 @@ func saveFolderBinding(cfg config.Config, dir, name string) {
 }
 
 // boundName is the name this folder joined under before, if any.
+// dropFolderBindings removes every folder bound to a name. A binding that
+// outlives the registration re-creates the alias on the next `listen`.
+func dropFolderBindings(cfg config.Config, name string) int {
+	ff := loadFolders(cfg)
+	n := 0
+	for dir, b := range ff.Folders {
+		if b.Name == name {
+			delete(ff.Folders, dir)
+			n++
+		}
+	}
+	if n > 0 && cfg.ConfigDir != "" {
+		if data, err := json.MarshalIndent(ff, "", "  "); err == nil {
+			_ = os.WriteFile(foldersPath(cfg), append(data, '\n'), 0o600)
+		}
+	}
+	return n
+}
+
 func boundName(cfg config.Config, dir string) string {
 	return loadFolders(cfg).Folders[absOf(dir)].Name
 }

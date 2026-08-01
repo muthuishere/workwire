@@ -57,6 +57,20 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 				"%s is already registered as a %s and a peer's kind cannot change on re-registration — re-register without a \"kind\", or join under a different name",
 				card.Name, res.KindWas),
 		})
+	case res.TreeConflict:
+		// One working tree, one peer (registry-a2a R12). Registering a second
+		// name for a tree that already has a live peer is how `koine` and
+		// `koine-main` both existed on 2026-08-01: every question to that
+		// codebase then became a coin flip between a half with an answerer
+		// and a half without.
+		writeJSON(w, http.StatusConflict, map[string]string{
+			"error": "tree already has a peer",
+			"name":  card.Name,
+			"peer":  res.TreeHolder,
+			"detail": fmt.Sprintf(
+				"this working tree is already on the wire as %q — one tree, one peer. Use that name, or stop its listener and `workwire forget %s` first if it is a leftover",
+				res.TreeHolder, res.TreeHolder),
+		})
 	default: // conflict — existing registration untouched, no takeover
 		writeJSON(w, http.StatusConflict, map[string]string{
 			"error": "name taken", "name": card.Name, "suggestion": res.Suggestion,

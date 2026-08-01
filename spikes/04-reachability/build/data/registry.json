@@ -1,0 +1,1022 @@
+[
+  {
+    "name": "poll0",
+    "agentId": "a-3ccca1cc3184c74521",
+    "secretHash": "d4a2b74b03ed806e84799c39deeb24bf236ec143557315970a082e972bbbc75f",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:24.501896+05:30"
+  },
+  {
+    "name": "poll1",
+    "agentId": "a-ac97a3f4c9446257cc",
+    "secretHash": "18bd6c1e41210bec5df408448cf5ffdf943dc2bca763df1adf5af02d24552f92",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:15.210686+05:30"
+  },
+  {
+    "name": "poll10",
+    "agentId": "a-f7552bcd89298d30de",
+    "secretHash": "5c844ee47ff2288194cd376fda1c2d0a451e7788b014b1c5e521f6823a504d6f",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:18.51278+05:30"
+  },
+  {
+    "name": "poll11",
+    "agentId": "a-0e3f67991d864d2b0c",
+    "secretHash": "45e0e09c8d651f7131f1f7a572d8d161a1dbefeda90bbcaad7db85b3015a1817",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:18.513396+05:30"
+  },
+  {
+    "name": "poll12",
+    "agentId": "a-e73ae41944043a8428",
+    "secretHash": "f322bb08ed360f9a128feb8c40da92c0f15705d15427823bfa52b9504b4b44cc",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:18.512361+05:30"
+  },
+  {
+    "name": "poll13",
+    "agentId": "a-5b6ef11c8c73876179",
+    "secretHash": "c801cd730d61f595e96b8af26115424dcfec3ccf1a7647d9b5cd6767513bc432",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:18.514225+05:30"
+  },
+  {
+    "name": "poll14",
+    "agentId": "a-c61030a8b4fce325c3",
+    "secretHash": "c1b1961a0b4ac46217fb86ec63f139724d27bfce4a0a3c28bd0f5d27c67e5de1",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:18.513731+05:30"
+  },
+  {
+    "name": "poll15",
+    "agentId": "a-8a0293a3cc43ded256",
+    "secretHash": "a5f58089f30dc028d98664d8c7bfef0953621f731fb7206f86787dec85c8172a",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:18.511908+05:30"
+  },
+  {
+    "name": "poll16",
+    "agentId": "a-cd88a9029ff0499499",
+    "secretHash": "244e988d845be0a761f550ee77a5c70f2781926734d021445655db9fd3fdc49f",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:18.532589+05:30"
+  },
+  {
+    "name": "poll17",
+    "agentId": "a-606c70c420d2bdfa86",
+    "secretHash": "6294791eded7a61eedd4b7f50ad56b74ef440d180c12b46dc2cd3553df50698e",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:18.53222+05:30"
+  },
+  {
+    "name": "poll18",
+    "agentId": "a-105c939553d8d965a2",
+    "secretHash": "2399dd35bdd00ef0e47224deb447d3bd5532c1af847e6fca22c68f70218ec0bc",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:18.51442+05:30"
+  },
+  {
+    "name": "poll19",
+    "agentId": "a-45825e4b551680879e",
+    "secretHash": "49bd76e67bea114c255e108ffadfd6ec596fd70671ff2e7da82ed6da47dd3ee8",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:18.533117+05:30"
+  },
+  {
+    "name": "poll2",
+    "agentId": "a-60ff36bd2bded26b00",
+    "secretHash": "a1d7806dcdf0bec2dbb2d61c9eeb34d6ffe83a4fd0285c7191c434c571c93564",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:15.211229+05:30"
+  },
+  {
+    "name": "poll20",
+    "agentId": "a-ae9a3b532483ffde11",
+    "secretHash": "7c91c647ac511ce68ed28577e700b4d81287d2d5f510436718a619bc8b6c2c37",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:18.51399+05:30"
+  },
+  {
+    "name": "poll21",
+    "agentId": "a-b689bcc20967211ee5",
+    "secretHash": "5e3b1232dff84754b2386ce3edfb7915db65fc628de94c7c4096e254497adfd0",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:18.532017+05:30"
+  },
+  {
+    "name": "poll22",
+    "agentId": "a-c54a9662732b57ab35",
+    "secretHash": "fca92a5cd18a7a80177405e9f0498223af8003e9e2e6ed040b643b606757d35c",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:18.532415+05:30"
+  },
+  {
+    "name": "poll23",
+    "agentId": "a-5147b07a5bf0cfdbe7",
+    "secretHash": "5cb0610c2f3270bbd0557cbabbd6022c5344d9ddc35bf4b7213216f1d2b215dd",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:18.532927+05:30"
+  },
+  {
+    "name": "poll24",
+    "agentId": "a-58cbad8b5c37a164ce",
+    "secretHash": "0b8264652c6be57075dedf31aa1689aa411b44851fe05299441e4ee262f74178",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:18.531778+05:30"
+  },
+  {
+    "name": "poll25",
+    "agentId": "a-4f1ca23bcb59c4cfcd",
+    "secretHash": "8cae51b088ea9885a14b009f0f2aceddfc2a28f322a35c0b11e1a1dc2e05b774",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:21.788715+05:30"
+  },
+  {
+    "name": "poll26",
+    "agentId": "a-50c817ec2ee76330b9",
+    "secretHash": "16d1ea3e4ac10ba77370225a1ef069a17d6f2897f764e7ee039d9401e406aac5",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:21.828039+05:30"
+  },
+  {
+    "name": "poll27",
+    "agentId": "a-debd3d1cae132596cd",
+    "secretHash": "faea25207f3c648e495efe5d4b5dce68fb3b3d6facd9356e0e6f693f8b30b320",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:21.832658+05:30"
+  },
+  {
+    "name": "poll28",
+    "agentId": "a-c771d5c257ec0d296c",
+    "secretHash": "7d2209dd25d1b67fba8ee6acb7cf9fbcea5282f4e50ce750b341f3aa229a37ac",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:21.805677+05:30"
+  },
+  {
+    "name": "poll29",
+    "agentId": "a-b909e08f5a754846ed",
+    "secretHash": "fc6693127eea4268b71d4583e1c983522f3b18fa1c0eba14a349d7995e86d851",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:21.850991+05:30"
+  },
+  {
+    "name": "poll3",
+    "agentId": "a-baae18b8b4d258315c",
+    "secretHash": "8dda14a7b2ce9674fff8d8f927f74ce63bcec56e92ee160589b0caabba6cf2dd",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:15.209802+05:30"
+  },
+  {
+    "name": "poll30",
+    "agentId": "a-2759177da1cf0f12da",
+    "secretHash": "2dc8f7e0d1bf1fea8a582a093468b00f55b0e0c84b3f6cda1bf02b5727b322d5",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:21.83221+05:30"
+  },
+  {
+    "name": "poll31",
+    "agentId": "a-26cbb000ff602332f6",
+    "secretHash": "d4c90360219adc6c7494ec02c5fbe712d7bed775fbeb3b67347f666e91632579",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:21.897062+05:30"
+  },
+  {
+    "name": "poll32",
+    "agentId": "a-ccf912920091bfbdf0",
+    "secretHash": "406d68f7a3a0c95f6e116918ac173dccf1a0d09a53f167ab7ba4026b697fa804",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:21.853358+05:30"
+  },
+  {
+    "name": "poll33",
+    "agentId": "a-7a603a1260ff0d5960",
+    "secretHash": "d858c0159213edcc7b335d6bc722f2c25fbcc5cb30c80049a07f10bb5290b4e7",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:21.841542+05:30"
+  },
+  {
+    "name": "poll34",
+    "agentId": "a-cacad94d7c8060b75d",
+    "secretHash": "68e0cf654f09d55a7a7ca673a13837a0f56d8f84502844fd305b68c4a53d93f0",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:21.855063+05:30"
+  },
+  {
+    "name": "poll35",
+    "agentId": "a-394ffb520f588abd1f",
+    "secretHash": "a90c31292091aec9f0771fcaf5cda2f0c5e8dee502dbd2664f97a7d704d9dd2a",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:21.844945+05:30"
+  },
+  {
+    "name": "poll36",
+    "agentId": "a-254266a9c112b123cd",
+    "secretHash": "0831f9696a4e379c6289a100de8c2e3ee2a93d9ba1ac03616a5aff1b9e2772c4",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:21.838775+05:30"
+  },
+  {
+    "name": "poll37",
+    "agentId": "a-a4f990460c9bf8838b",
+    "secretHash": "32beb8277afdcfb7903e6060924ec8ea49f01833b5fa8b25bcc19bd6a65b0889",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:21.870826+05:30"
+  },
+  {
+    "name": "poll38",
+    "agentId": "a-1256ea3ad6cbc02cc9",
+    "secretHash": "061443ed4fc3acd7d14a817707739710f95ab9919535bacc691ec32cb9dde986",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:21.897542+05:30"
+  },
+  {
+    "name": "poll39",
+    "agentId": "a-3843ddf5e9a4694b5c",
+    "secretHash": "e6424df7da3ba0538a28cec00670e88d1b6d6f766074eec75a1461bdc7099b32",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:21.897318+05:30"
+  },
+  {
+    "name": "poll4",
+    "agentId": "a-39e69701ee6432a265",
+    "secretHash": "05e78e3bf810ff43d4217c3a814e2dd161bcb94f54cc57ee1e031a500b2785af",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:15.210971+05:30"
+  },
+  {
+    "name": "poll40",
+    "agentId": "a-37301e2e865a818c13",
+    "secretHash": "7ee9fcc6426d389e2fcbb5d3dc5583979316afe1a25418df2ac1dd02a4aa0c81",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:21.896839+05:30"
+  },
+  {
+    "name": "poll41",
+    "agentId": "a-f50a0beb78b9141e29",
+    "secretHash": "33b3e82ac6b8e392cbbe1a854a88ed610bc020b494146303ecb84b3ecd7ee17a",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:21.893624+05:30"
+  },
+  {
+    "name": "poll42",
+    "agentId": "a-2d22bbe6841d8ca7b6",
+    "secretHash": "d3716dc5cb7bb8d08f74af8742aea8a5bf1c5521f5ebc2e7fc017ac53a463e09",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:21.877237+05:30"
+  },
+  {
+    "name": "poll43",
+    "agentId": "a-4366996eae9bd6c545",
+    "secretHash": "6aa1a09d12b9b1dc46a06fb2c29c5d9409fc8bd788b3286efe130eabcb95d738",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:21.871165+05:30"
+  },
+  {
+    "name": "poll44",
+    "agentId": "a-06247d9566182e7d5e",
+    "secretHash": "fedb6dad9773bd6228dded185fa05168561bbd5563cc8ca0861fe9cd8b3b87c4",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:21.895164+05:30"
+  },
+  {
+    "name": "poll45",
+    "agentId": "a-3aa8630eca06d5780b",
+    "secretHash": "c0733e47a3038b1587d0627bcad3c507fcca334d193a44f0cca6f183a1601a5f",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:21.876977+05:30"
+  },
+  {
+    "name": "poll46",
+    "agentId": "a-03978fb8d09e217fe2",
+    "secretHash": "0449ca727b6c85ee742a02f4d4c65b50a8c96f8cca96f03ec25b606926828139",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:21.898028+05:30"
+  },
+  {
+    "name": "poll47",
+    "agentId": "a-1b61dde5179f6dd1a4",
+    "secretHash": "3f5d4545feac502b779226223f33fa6b87dfc7c0eb8e041a3abc8bc5a39a113e",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:21.87257+05:30"
+  },
+  {
+    "name": "poll48",
+    "agentId": "a-040b859b6432dcb645",
+    "secretHash": "d71c74c7f56bb99f82f55d283aef98744e86dac9f38040fd60f737893e6ebb2a",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:21.895421+05:30"
+  },
+  {
+    "name": "poll49",
+    "agentId": "a-a1ddfef266c7a7bc88",
+    "secretHash": "7ac06c92942d114415da3b670d426c6b96a63cc4580a6ec8a8a7aa5b4a0b65a4",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:21.89612+05:30"
+  },
+  {
+    "name": "poll5",
+    "agentId": "a-4a251befaa1f437cf8",
+    "secretHash": "de8cf8187a1117277e1260976ddcf2f0bd97ba62ed87b367da8dc4945f02f07d",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:15.227068+05:30"
+  },
+  {
+    "name": "poll6",
+    "agentId": "a-7f93d6790fe4b4c917",
+    "secretHash": "5f9a29cc1e133b56f0e8034d985d4c0020637e6edecce1c8b42f3889e3e71468",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:15.227262+05:30"
+  },
+  {
+    "name": "poll7",
+    "agentId": "a-84eef792c65f5c26b2",
+    "secretHash": "48f963e7e11426abd8213024d49a067d44738ecd40d739dcd2c744acff113587",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:15.22742+05:30"
+  },
+  {
+    "name": "poll8",
+    "agentId": "a-53690ff9b899b23179",
+    "secretHash": "7adb789ca21481ad7e1041d9074468884bb65aaf2760d141140543784e44fdda",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:15.226745+05:30"
+  },
+  {
+    "name": "poll9",
+    "agentId": "a-a627a3c79825947012",
+    "secretHash": "60a56b5d7665c241a7bd006bc17643cfe052b266dee3763e97155bb4adc1c72d",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+    "persona": "build (muthuishere/workwire)",
+    "kind": "agent",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:15.226563+05:30"
+  },
+  {
+    "name": "prober",
+    "agentId": "a-e0448544933bb079eb",
+    "secretHash": "ffaf3a2fe4acd8b28773cd27ab91e03ca3ccb4c9b0f19939ee650663d13b41f1",
+    "capabilities": [
+      "ask"
+    ],
+    "project": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire",
+    "persona": "owns: the hub itself — the envelope store and cursors, the HTTP surface, identity and auth,; discussions/dissent/closure rules, groups, the agent skill and CLI, the served A2A face…",
+    "kind": "human",
+    "origin": {
+      "repo": "muthuishere/workwire",
+      "branch": "main",
+      "commit": "d6cffb8",
+      "dirty": true,
+      "cwd": "/Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire",
+      "host": "Muthukumarans-MacBook-Pro-2.local"
+    },
+    "lastSeen": "2026-08-01T07:02:24.501006+05:30"
+  }
+]

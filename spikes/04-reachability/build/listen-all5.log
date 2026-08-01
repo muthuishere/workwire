@@ -1,0 +1,4 @@
+workwire listen: listening as all5 (inbox file /Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build/config/sessions/all5/inbox.ndjson)
+workwire listen: delivered 1 envelope(s)
+workwire listen: shutting down (releasing lease)
+workwire listen: hub unreachable: inbox poll: Get "http://127.0.0.1:14491/inbox?agent=all5&context=5&since=21&wait=25": dial tcp 127.0.0.1:14491: connect: connection refused — retrying (the listener does not exit)

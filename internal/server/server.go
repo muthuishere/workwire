@@ -6,6 +6,7 @@ package server
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -21,6 +22,16 @@ import (
 
 // APIVersion is the hub surface version reported by /health.
 const APIVersion = 1
+
+const (
+	// stalledKind marks the ONE system envelope a thread gets when it first
+	// hits the round cap (hub-core R26). Its presence on the thread is also
+	// the "already notified" flag, so no extra state is persisted.
+	stalledKind = "stalled"
+	// hubSender is the `from` on envelopes the hub itself authors. It is not a
+	// registered peer and cannot be addressed.
+	hubSender = "workwire-hub"
+)
 
 // Server holds the hub state.
 type Server struct {
@@ -243,7 +254,68 @@ func (s *Server) ingest(id auth.Identity, req sendRequest) (*envelope.Envelope, 
 	}
 	// TOFU harvest from every accepted envelope's sender (contacts R1).
 	s.contacts.Harvest(from, id.PeerKind(), from, env.TS)
+	s.notifyIfStalled(threadID)
 	return env, 0, ""
+}
+
+// notifyIfStalled posts ONE system envelope when a thread first reaches the
+// round cap (hub-core R26).
+//
+// The cap already refuses further sends with a 409 that says the thread is
+// "handed back to its initiator" — but nothing was ever handed to anyone. The
+// initiator was not told, the other members were not told, and two peers on
+// 2026-08-01 each concluded their messages had been silently lost. They had
+// not been: every over-cap send was refused. The silence was the defect.
+func (s *Server) notifyIfStalled(threadID string) {
+	if s.cfg.MaxThreadMessages <= 0 || threadID == "" {
+		return
+	}
+	ts, exists := s.store.ThreadState(threadID, s.cfg.MaxThreadMessages)
+	if !exists || ts.Count < s.cfg.MaxThreadMessages {
+		return
+	}
+	// Exactly once per stall: the notice's own presence is the flag, so no new
+	// state is needed and a restart cannot make it fire twice.
+	if list, ok := s.store.Thread(threadID, 0); ok {
+		for _, m := range list {
+			if m.Env.Kind == stalledKind {
+				return
+			}
+		}
+	}
+	to := make([]string, 0, len(ts.Members))
+	for _, m := range ts.Members {
+		to = append(to, m)
+	}
+	if ts.Initiator != "" {
+		found := false
+		for _, m := range to {
+			if m == ts.Initiator {
+				found = true
+			}
+		}
+		if !found {
+			to = append(to, ts.Initiator)
+		}
+	}
+	if len(to) == 0 {
+		return
+	}
+	text := fmt.Sprintf(
+		"thread %s reached its cap of %d messages and is now stalled: further sends are refused. "+
+			"It is handed back to its initiator (%s) with the disagreement intact. "+
+			"A human peer may reopen it; anyone may start a new thread. Unresolved is a valid outcome.",
+		threadID, s.cfg.MaxThreadMessages, ts.Initiator)
+	_, _ = s.store.Append(&envelope.Envelope{
+		ID:       envelope.NewID("m"),
+		From:     hubSender,
+		To:       to,
+		ThreadID: threadID,
+		Text:     text,
+		TS:       envelope.Now(),
+		Kind:     stalledKind,
+		Meta:     map[string]any{"system": true, "cap": s.cfg.MaxThreadMessages},
+	})
 }
 
 // delivered is one inbox entry: the envelope plus its read-time context

@@ -1,0 +1,6 @@
+workwire listen: listening as poll27 (inbox file /Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build/config/sessions/poll27/inbox.ndjson)
+workwire listen: shutting down (releasing lease)
+workwire listen: hub unreachable: inbox poll: Get "http://127.0.0.1:14491/inbox?agent=poll27&context=5&since=0&wait=25": dial tcp 127.0.0.1:14491: connect: connection refused — retrying (the listener does not exit)
+workwire listen: listening as poll27 (inbox file /Users/muthuishere/muthu/gitworkspace/work-wire-ws/workwire/spikes/04-reachability/build/config/sessions/poll27/inbox.ndjson)
+workwire listen: shutting down (releasing lease)
+workwire listen: hub unreachable: inbox poll: Get "http://127.0.0.1:14491/inbox?agent=poll27&context=5&since=0&wait=25": dial tcp 127.0.0.1:14491: connect: connection refused — retrying (the listener does not exit)

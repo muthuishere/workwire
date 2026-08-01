@@ -274,3 +274,68 @@ meaning and its consumers.
 #### Scenario: answerability may only be declared by the peer itself
 - WHEN a peer holding a different agent's credential POSTs `/agents/api/answering`
 - THEN the hub responds `403`, and `404` for an unknown agent
+
+### R12: The system SHALL refuse a SECOND live registration for a working tree it already has, using the provenance it already stores
+
+A peer name is an identity claim about a codebase. Two names for one working tree — `koine`
+and `koine-main`, same repo, same branch, same cwd — make every question a coin flip:
+whichever half the asker addresses may be the half with nobody attached, and a thread can
+carry two "voices" that are one session. This happened on the live mesh on 2026-08-01 and
+is reproduced in `spikes/04-reachability/` F3.
+
+The hub already holds what it needs on every card: `origin.cwd`, `origin.repo`,
+`origin.branch`. When a registration presents an origin whose `cwd` matches that of a
+DIFFERENT live peer (within TTL), the hub SHALL respond `409` naming the peer that already
+speaks for that tree, and SHALL register nothing. A registration for the same NAME with the
+same origin remains ordinary re-registration (a restart), unaffected.
+
+The check SHALL apply only to live peers: a stale registration for a tree whose session has
+gone is not a conflict, it is a leftover, and `DELETE /agents/<name>` is how it goes away.
+An empty `origin.cwd` (a peer registering without provenance) SHALL NOT be matched against
+anything.
+
+#### Scenario: one tree, two names
+- GIVEN `koine` is live with `origin.cwd = /src/koine`
+- WHEN a registration arrives for `koine-main` with the same `origin.cwd`
+- THEN the hub responds `409` naming `koine`, and `koine-main` does not exist
+
+#### Scenario: the same peer restarting is not a conflict
+- GIVEN `koine` is live with `origin.cwd = /src/koine`
+- WHEN `koine` re-registers with the same credential and the same cwd
+- THEN it succeeds and keeps its identity
+
+#### Scenario: a leftover is not a conflict
+- GIVEN `koine` registered from `/src/koine` and has been silent past TTL
+- WHEN `koine-main` registers from `/src/koine`
+- THEN it is accepted — a dead registration blocks nothing
+
+#### Scenario: no provenance, no matching
+- WHEN two peers register with no `origin.cwd`
+- THEN neither blocks the other
+
+### R13: The hub SHALL expose its own operational state — counters, per-agent delivery facts, and a structured event log
+
+A hub that runs unattended as a service must answer "what changed?" without an
+archaeologist. On 2026-08-01 the only way to diagnose a silent mesh was reading NDJSON by
+hand and correlating pids.
+
+`GET /metrics` (authenticated) SHALL return a JSON object carrying, at minimum: hub uptime
+and start time; total envelopes stored and bytes on disk; counts of live agents, listeners
+and attached answerers; per-agent `{delivered, pending, cursor, last_delivered_at,
+last_seen, listener, answering}`; thread counts by state (open / resolved / stalled); and
+in-flight long-poll count. It SHALL NOT include secret material of any kind — no tokens, no
+agent secrets — and SHALL be cheap enough to poll every few seconds.
+
+The hub SHALL also emit a structured, one-line-per-event log (`level`, `event`, `agent`,
+`thread`, `ms`, and an outcome) for registration, lease acquire/lose, delivery, stall
+refusal, and any 5xx, so a failure has a greppable record rather than requiring a live
+observer.
+
+#### Scenario: diagnosing a quiet peer
+- GIVEN a peer whose questions are being delivered but never answered
+- WHEN an operator reads `GET /metrics`
+- THEN that peer shows `listener:true`, `answering:false`, a non-zero `pending`, and a `last_delivered_at` — enough to distinguish "nothing sent" from "nothing read"
+
+#### Scenario: metrics never leak credentials
+- WHEN `GET /metrics` is served
+- THEN no admin token, agent secret or credential-derived value appears anywhere in the payload
