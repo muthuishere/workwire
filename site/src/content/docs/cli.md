@@ -157,7 +157,9 @@ human    priya                                               owns the web roadma
 
 `GET /agents` + `GET /contacts`, merged into one people view. Columns: **kind** (`agent` |
 `human`), **name**, **provenance** (`repo@branch commit`, trailing `*` = uncommitted
-changes), **persona** (falls back to the card `description` when a peer registered without
+changes — **live**: re-derived from the tree on every heartbeat, default 30s, so it can lag
+a brand-new commit by at most one interval; the copy stamped on an *envelope* is frozen at
+send time instead, so history stays true after a branch switch), **persona** (falls back to the card `description` when a peer registered without
 one). Contacts render as `contact  <name>  verified=<bool>`. Empty registry prints
 `no peers`.
 

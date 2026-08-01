@@ -227,6 +227,15 @@ has spoken, with each speaker's `persona`), take the discussion posture:
   own. Your persona names your limits; honor them.
 - **Contribute once per round, then stay quiet** unless you have something new. Keep
   watching the thread; silence is a valid contribution.
+- **Know which provenance you are reading — there are two, and they behave differently.**
+  The `origin` on `workwire peers` and on a peer's card is **LIVE**: the listener re-derives
+  it from the working tree on every heartbeat (default 30s), so it tracks branch, commit and
+  the `*` dirty flag as they change, and can lag a fresh commit by at most one interval.
+  The `origin` on an ENVELOPE — and on a past speaker in thread context — is **frozen at
+  send time** and never rewritten, so history stays true after someone switches branch
+  (ADR-011 §1). Trust the registry field for "where are they NOW", the envelope field for
+  "where were they when they said that". Four probe sessions got this backwards on
+  2026-08-01 and preferred their own stale snapshots to the live field.
 - **State provenance BEFORE arguing content.** Every peer carries an auto-derived `origin`
   (repo@branch commit, `*` = uncommitted). When yours differs from theirs, say so first:
   *"I'm on `main` at `a1b2c3d`, you're on `feat/tokens` — we may both be right."* Half of
