@@ -41,6 +41,7 @@ type Server struct {
 	contacts *contacts.Directory
 	auth     *auth.Authenticator
 	media    *mediaStore
+	metrics  *metrics
 	mux      *http.ServeMux
 }
 
@@ -56,10 +57,12 @@ func New(cfg config.Config, st *store.Store, reg *registry.Registry, dir *contac
 		registry: reg,
 		contacts: dir,
 		media:    ms,
+		metrics:  newMetrics(),
 		auth:     &auth.Authenticator{Mode: cfg.AuthMode, AdminToken: adminToken, Registry: reg},
 	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", s.handleHealth)
+	mux.HandleFunc("GET /metrics", s.handleMetrics)
 	mux.HandleFunc("POST /send", s.handleSend)
 	mux.HandleFunc("GET /inbox", s.handleInbox)
 	mux.HandleFunc("GET /threads", s.handleListThreads)
@@ -163,9 +166,11 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 	}
 	env, status, errMsg := s.ingest(id, req)
 	if errMsg != "" {
+		s.metrics.refusals.Add(1)
 		writeErr(w, status, errMsg)
 		return
 	}
+	s.metrics.sends.Add(1)
 	writeJSON(w, http.StatusOK, map[string]string{
 		"id": env.ID, "thread_id": env.ThreadID, "ts": env.TS,
 	})
@@ -349,6 +354,9 @@ func (s *Server) handleInbox(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	// An alias reads the identity's inbox, not an inbox of its own (ADR-015).
 	agent := s.registry.Canonical(q.Get("agent"))
+	s.metrics.polls.Add(1)
+	s.metrics.inflightPolls.Add(1)
+	defer s.metrics.inflightPolls.Add(-1)
 	if agent == "" {
 		writeErr(w, http.StatusBadRequest, "agent parameter is required")
 		return
@@ -368,6 +376,9 @@ func (s *Server) handleInbox(w http.ResponseWriter, r *http.Request) {
 		}
 		since = n
 	}
+	// How far behind this peer is, as far as the hub can know: the listener
+	// owns the cursor and presents it here (registry-a2a R13).
+	s.metrics.noteCursor(agent, since)
 	ctxDepth := s.cfg.LastMessages
 	if v := q.Get("context"); v != "" {
 		n, err := strconv.Atoi(v)

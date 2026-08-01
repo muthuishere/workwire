@@ -346,3 +346,34 @@ observer.
 #### Scenario: metrics never leak credentials
 - WHEN `GET /metrics` is served
 - THEN no admin token, agent secret or credential-derived value appears anywhere in the payload
+
+#### Scenario: metrics is not public
+- WHEN `GET /metrics` is requested with no credential
+- THEN the hub responds `401` — `/health` remains the only unauthenticated endpoint (auth R7)
+
+### R14: The system SHALL provide local diagnosis that works with the HUB DOWN, and a dashboard that never hands a credential to a browser
+
+`/metrics` cannot answer a question about a hub that is not running, and a hub that is not
+running is the most likely thing to be wrong. Every fact needed to answer "is my side
+alive?" is already on disk (`spikes/05-observability` S8).
+
+`workwire doctor` SHALL read local state ONLY — both configs, the hub logs, run locks and
+their folder owners, session inbox sizes against their persisted offsets, and the answerer
+marker — and SHALL report an unreachable hub as a finding rather than failing. It SHALL name
+the "delivered but unread" state explicitly: unread inbox bytes with no answerer marker. It
+SHALL flag a config or credential file readable by others.
+
+`workwire ui` SHALL serve a dashboard bound to LOOPBACK from the CLI process, not from the
+hub. The credential stays in that process: the page SHALL receive no token, and the viewer
+SHALL proxy only an explicit allow-list of read-only GETs. The page SHALL be self-contained
+— no external script, style, font or image — so rendering the mesh sends nothing off the
+machine.
+
+#### Scenario: diagnosing with the hub stopped
+- GIVEN no hub is running
+- WHEN `workwire doctor` runs
+- THEN it reports the hub unreachable, still lists local listeners, inbox backlogs and file modes, and exits without error
+
+#### Scenario: the browser never sees a credential
+- WHEN the dashboard page and its proxied API responses are fetched
+- THEN no bearer token appears in either, and a path outside the allow-list is refused `403`

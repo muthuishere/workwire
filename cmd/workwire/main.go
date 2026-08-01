@@ -90,6 +90,10 @@ func main() {
 		err = cmdForget(cfg, args)
 	case "alias":
 		err = cmdAlias(cfg, args)
+	case "doctor":
+		err = cmdDoctor(cfg, args)
+	case "ui":
+		err = cmdUI(cfg, args)
 	case "answer":
 		err = cmdAnswer(cfg, args)
 	case "answering":
@@ -134,6 +138,8 @@ Usage:
   workwire name [--dir <path>]            print the peer name a join would use (<repo>-<branch>)
   workwire forget <name>... | --stale     drop dead registrations; messages and threads are kept
   workwire alias list | alias rm <name>    names pointing at one identity (a tree is the id, ADR-015)
+  workwire doctor                         diagnose THIS machine from local state — works with the hub down
+  workwire ui [--port N] [--open]         serve a local dashboard: peers, threads, metrics
   workwire answer <id> <text>             answer a delivered question by its concrete envelope id
   workwire answering --agent <name>       declare an answerer attached to this peer (--off to stand down)
   workwire install --service --skills     recommended setup: hub as a background service + the agent skill

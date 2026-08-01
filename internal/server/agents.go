@@ -200,9 +200,11 @@ func (s *Server) handleAsk(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	env, status, errMsg := s.askCore(id, s.registry.Canonical(name), req.Text, req.ThreadID)
 	if errMsg != "" {
+		s.metrics.refusals.Add(1)
 		writeErr(w, status, errMsg)
 		return
 	}
+	s.metrics.asks.Add(1)
 	// The question is queued either way (an offline agent still receives
 	// asks), but the asker deserves to know nobody is listening rather than
 	// staring at a silent timeout.

@@ -1,0 +1,171 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>workwire</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+  :root {
+    --bg:#fbfbfd; --panel:#fff; --ink:#14161a; --muted:#6a7280; --line:#e6e8ec;
+    --accent:#3478F6; --ok:#12855a; --warn:#b06000; --bad:#c0392b; --chip:#f0f2f6;
+    --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#0e1013; --panel:#16191e; --ink:#e8eaee; --muted:#98a0ac; --line:#252a31;
+           --accent:#5b9bff; --ok:#3ecf8e; --warn:#e8a13a; --bad:#ff6b5e; --chip:#1e232a; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,sans-serif}
+  header{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;
+         padding:18px 22px;border-bottom:1px solid var(--line);background:var(--panel)}
+  h1{font-size:17px;margin:0;letter-spacing:-.01em}
+  h1 span{color:var(--accent)}
+  .sub{color:var(--muted);font-size:13px}
+  .grid{display:grid;gap:14px;padding:18px 22px;
+        grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr))}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+  .card h2{margin:0 0 10px;font-size:11px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+  .big{font:600 26px/1.1 var(--mono)}
+  .row{display:flex;justify-content:space-between;gap:12px;padding:3px 0;font-size:13px}
+  .row span:last-child{font-family:var(--mono)}
+  section{padding:0 22px 22px}
+  section > h2{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--muted);margin:8px 0 10px}
+  .scroll{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+  table{border-collapse:collapse;width:100%;font-size:13.5px;min-width:720px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:600}
+  tr:last-child td{border-bottom:0}
+  td.wrap{white-space:normal;max-width:460px;color:var(--muted)}
+  .mono{font-family:var(--mono);font-size:12.5px}
+  .chip{display:inline-block;padding:1px 7px;border-radius:999px;background:var(--chip);
+        font-size:11.5px;font-family:var(--mono)}
+  .ok{color:var(--ok)} .warn{color:var(--warn)} .bad{color:var(--bad)} .muted{color:var(--muted)}
+  .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;vertical-align:middle}
+  .dot.ok{background:var(--ok)} .dot.warn{background:var(--warn)} .dot.bad{background:var(--bad)}
+  footer{padding:0 22px 26px;color:var(--muted);font-size:12px}
+  a{color:var(--accent)}
+</style>
+
+<header>
+  <h1>work<span>wire</span></h1>
+  <div class="sub" id="hubline">connecting…</div>
+  <div class="sub" style="margin-left:auto" id="stamp"></div>
+</header>
+
+<div class="grid" id="cards"></div>
+
+<section>
+  <h2>Peers — one identity per working tree</h2>
+  <div class="scroll"><table id="peers">
+    <thead><tr>
+      <th>identity</th><th>state</th><th>pending</th><th>delivered</th>
+      <th>provenance</th><th>also answers to</th><th>persona</th>
+    </tr></thead><tbody></tbody>
+  </table></div>
+</section>
+
+<section>
+  <h2>Threads</h2>
+  <div class="scroll"><table id="threads">
+    <thead><tr><th>thread</th><th>state</th><th>rounds</th><th>dissent</th><th>members</th><th>topic</th></tr></thead>
+    <tbody></tbody>
+  </table></div>
+</section>
+
+<footer id="foot"></footer>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+
+async function get(path) {
+  const r = await fetch("/api" + path);
+  if (!r.ok) throw new Error(path + " → " + r.status);
+  return r.json();
+}
+
+function card(title, body) {
+  return `<div class="card"><h2>${title}</h2>${body}</div>`;
+}
+
+function peerState(a) {
+  // The three honest states. A lease means questions are DELIVERED; it has
+  // never meant anyone is reading them.
+  if (!a.listener) return `<span class="dot bad"></span><span class="bad">no listener</span>`;
+  if (!a.answering) return `<span class="dot warn"></span><span class="warn">no answerer</span>`;
+  return `<span class="dot ok"></span><span class="ok">answering</span>`;
+}
+
+function human(n) { return n >= 1e6 ? (n/1e6).toFixed(1)+"M" : n >= 1e3 ? (n/1e3).toFixed(1)+"k" : String(n); }
+function dur(s) {
+  if (s < 60) return s + "s";
+  if (s < 3600) return Math.floor(s/60) + "m";
+  if (s < 86400) return Math.floor(s/3600) + "h " + Math.floor((s%3600)/60) + "m";
+  return Math.floor(s/86400) + "d " + Math.floor((s%86400)/3600) + "h";
+}
+
+async function tick() {
+  try {
+    const [m, t] = await Promise.all([get("/metrics"), get("/threads")]);
+    $("#hubline").innerHTML =
+      `<span class="dot ok"></span>hub up ${dur(m.hub.uptimeSeconds)} · api v${m.hub.apiVersion} · auth ${esc(m.hub.authMode)}`;
+
+    const unattended = m.agents.filter(a => a.listener && !a.answering).length;
+    const waiting = m.agents.reduce((n,a) => n + (a.pending || 0), 0);
+
+    $("#cards").innerHTML = [
+      card("Peers", `<div class="big">${m.agents.length}</div>
+        <div class="row"><span>answering</span><span class="ok">${m.agents.filter(a=>a.answering).length}</span></div>
+        <div class="row"><span>listening only</span><span class="${unattended?"warn":"muted"}">${unattended}</span></div>
+        <div class="row"><span>no listener</span><span class="${m.agents.filter(a=>!a.listener).length?"bad":"muted"}">${m.agents.filter(a=>!a.listener).length}</span></div>`),
+      card("Waiting to be read", `<div class="big ${waiting?"warn":""}">${human(waiting)}</div>
+        <div class="row"><span>envelopes stored</span><span>${human(m.storage.envelopes)}</span></div>
+        <div class="row"><span>threads</span><span>${human(m.storage.threads)}</span></div>
+        <div class="row"><span>on disk</span><span>${human(m.storage.bytes)}B / ${m.storage.segments} seg</span></div>`),
+      card("Threads", `<div class="big">${m.threads.open}</div>
+        <div class="row"><span>open</span><span>${m.threads.open}</span></div>
+        <div class="row"><span>stalled</span><span class="${m.threads.stalled?"warn":"muted"}">${m.threads.stalled}</span></div>
+        <div class="row"><span>resolved</span><span class="muted">${m.threads.resolved}</span></div>
+        <div class="row"><span>with open dissent</span><span>${m.threads.dissenting}</span></div>`),
+      card("Traffic", `<div class="big">${human(m.traffic.sends)}</div>
+        <div class="row"><span>asks</span><span>${human(m.traffic.asks)}</span></div>
+        <div class="row"><span>polls</span><span>${human(m.traffic.polls)}</span></div>
+        <div class="row"><span>in flight now</span><span>${m.traffic.inflightPolls}</span></div>
+        <div class="row"><span>refused</span><span class="${m.traffic.refusals?"warn":"muted"}">${human(m.traffic.refusals)}</span></div>`),
+    ].join("");
+
+    $("#peers>tbody").innerHTML = m.agents.map(a => {
+      const o = a.origin || {};
+      const prov = o.repo ? `${esc(o.repo)}@${esc(o.branch||"?")} ${esc((o.commit||"").slice(0,7))}${o.dirty?"*":""}` : "—";
+      return `<tr>
+        <td class="mono">${esc(a.name)} ${a.kind==="human"?'<span class="chip">human</span>':""}</td>
+        <td>${peerState(a)}</td>
+        <td class="mono ${a.pending?"warn":"muted"}">${a.pending ?? 0}</td>
+        <td class="mono muted">${a.delivered ?? 0}</td>
+        <td class="mono muted">${prov}</td>
+        <td>${(a.aliases||[]).map(x=>`<span class="chip">${esc(x)}</span>`).join(" ") || '<span class="muted">—</span>'}</td>
+        <td class="wrap">${esc((a.persona||"").slice(0,120))}</td>
+      </tr>`;
+    }).join("") || `<tr><td colspan="7" class="muted">nobody on the wire</td></tr>`;
+
+    $("#threads>tbody").innerHTML = (t.threads||[]).map(x => {
+      const cls = x.state === "stalled" ? "warn" : x.state === "resolved" ? "muted" : "ok";
+      return `<tr>
+        <td class="mono muted">${esc(x.thread_id)}</td>
+        <td class="${cls}">${esc(x.state)}</td>
+        <td class="mono">${x.count}</td>
+        <td class="mono ${(x.dissents||[]).length?"warn":"muted"}">${(x.dissents||[]).length}</td>
+        <td class="mono muted">${esc((x.members||[]).join(", "))}</td>
+        <td class="wrap">${esc((x.topic||"").slice(0,130))}</td>
+      </tr>`;
+    }).join("") || `<tr><td colspan="6" class="muted">no threads yet</td></tr>`;
+
+    $("#stamp").textContent = "updated " + new Date().toLocaleTimeString();
+    $("#foot").innerHTML = `oldest retained ${esc((m.storage.oldestTs||"—").slice(0,19))} · newest ${esc((m.storage.newestTs||"—").slice(0,19))} · seq ${m.storage.minSeq}–${m.storage.lastSeq}
+      &nbsp;·&nbsp; <span class="warn">no answerer</span> means questions are being delivered into a file nobody is reading.`;
+  } catch (e) {
+    $("#hubline").innerHTML = `<span class="dot bad"></span><span class="bad">${esc(e.message)}</span> — try <span class="mono">workwire doctor</span>`;
+  }
+}
+tick();
+setInterval(tick, 3000);
+</script>
