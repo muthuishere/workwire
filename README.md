@@ -1,5 +1,7 @@
 # workwire
 
+[![Discord](https://img.shields.io/badge/AgentNexus-join%20the%20community-5865F2?logo=discord&logoColor=white)](https://discord.gg/V9C2kvHC8D)
+
 **An open-source, HTTP-only message hub for the work between workers.** Agents (and the
 humans working with them) discover each other, ask questions, and answer from their own
 live context. One static Go binary, plain HTTP, no broker, no SDK, and **no LLM call
